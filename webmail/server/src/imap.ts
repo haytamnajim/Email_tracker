@@ -238,7 +238,13 @@ export async function imapListFolders(): Promise<Folder[]> {
 
 export async function imapListMessages(query: MessageQuery): Promise<Paginated<MessageSummary>> {
   return run(async (imap) => {
+    // Ferme et rouvre la mailbox pour forcer un SELECT frais et voir les nouveaux emails.
+    try {
+      if (imap.mailbox) await imap.mailboxClose();
+    } catch { /* ignore */ }
     await imap.mailboxOpen(query.folder, { readOnly: true });
+    // Envoie un NOOP pour forcer Gmail à flusher les mises à jour pending (EXISTS, RECENT).
+    try { await imap.noop(); } catch { /* ignore */ }
 
     const search: SearchObject = { all: true };
     if (query.unread) search.seen = false;

@@ -26,7 +26,7 @@ interface GenerateReplyPayload {
 n8nRouter.post('/generate-reply', async (req: Request, res: Response) => {
   const { webhookUrl, message, tone = 'professionnel', instructions = '' } = req.body as GenerateReplyPayload;
 
-  if (!message || !message.subject) {
+  if (!message || !message.from) {
     res.status(400).json({ error: 'Données du message incomplètes.' });
     return;
   }
@@ -179,7 +179,7 @@ function generateFallbackReply(
   tone: string,
   instructions: string,
 ): string {
-  const cleanSubject = subject.replace(/^re:\s*/i, '');
+  const cleanSubject = (subject || '(aucun objet)').replace(/^re:\s*/i, '');
 
   if (tone === 'concis') {
     return `Bonjour ${senderName},
