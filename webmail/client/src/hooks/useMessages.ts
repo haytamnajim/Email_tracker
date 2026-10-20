@@ -3,7 +3,7 @@ import { ApiError, fetchMessages } from '../api';
 import type { MessageSummary } from '../types';
 
 export const PAGE_SIZE = 25;
-const AUTO_REFRESH_MS = 60_000;
+const AUTO_REFRESH_MS = 15_000;
 const SEARCH_DEBOUNCE_MS = 300;
 
 export interface MessagesFilters {
@@ -29,7 +29,7 @@ function useDebouncedValue<T>(value: T, delay: number): T {
 
 /**
  * Liste paginée d'un dossier : recherche (debounce 300 ms), filtres,
- * tri par date, chargement progressif et actualisation automatique (60 s).
+ * tri par date, chargement progressif et actualisation automatique (15 s).
  */
 export function useMessages(folder: string, filters: MessagesFilters) {
   const { q, unread, flagged, attachments, sort } = filters;
@@ -39,12 +39,15 @@ export function useMessages(folder: string, filters: MessagesFilters) {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [newCount, setNewCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
   const requestId = useRef(0);
   const pagesRef = useRef(1);
   const mountedRef = useRef(true);
   const criteria = useRef({ folder, search, unread, flagged, attachments, sort });
+  const knownUids = useRef<Set<number>>(new Set());
 
   // Les critères courants sont lus au moment de la requête : pas de closure périmée.
   criteria.current = { folder, search, unread, flagged, attachments, sort };
@@ -73,12 +76,15 @@ export function useMessages(folder: string, filters: MessagesFilters) {
     pagesRef.current = 1;
     setLoading(true);
     setError(null);
+    setNewCount(0);
     try {
       const result = await fetchMessages(buildQuery(1));
       if (!mountedRef.current || id !== requestId.current) return;
       setItems(result.items);
       setTotal(result.total);
       setLoading(false);
+      // Initialise les UIDs connus
+      knownUids.current = new Set(result.items.map((i) => i.uid));
     } catch (err) {
       if (!mountedRef.current || id !== requestId.current) return;
       setItems([]);
@@ -113,18 +119,30 @@ export function useMessages(folder: string, filters: MessagesFilters) {
   const refresh = useCallback(async () => {
     const id = ++requestId.current;
     const pages = pagesRef.current;
+    setRefreshing(true);
     try {
       const results = await Promise.all(
         Array.from({ length: pages }, (_, index) => fetchMessages(buildQuery(index + 1))),
       );
       if (!mountedRef.current || id !== requestId.current) return;
-      setItems(results.flatMap((result) => result.items));
+      const newItems = results.flatMap((result) => result.items);
+
+      // Détection des nouveaux emails
+      const incoming = newItems.filter((i) => !knownUids.current.has(i.uid));
+      if (incoming.length > 0) {
+        setNewCount((prev) => prev + incoming.length);
+        incoming.forEach((i) => knownUids.current.add(i.uid));
+      }
+
+      setItems(newItems);
       setTotal(results[0]?.total ?? 0);
       setError(null);
     } catch (err) {
       // L'actualisation de fond n'efface jamais la liste déjà affichée.
       if (!mountedRef.current || id !== requestId.current) return;
       setError(err instanceof ApiError ? err.message : 'Erreur inattendue.');
+    } finally {
+      if (mountedRef.current) setRefreshing(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -134,7 +152,7 @@ export function useMessages(folder: string, filters: MessagesFilters) {
     void reset();
   }, [folder, search, unread, flagged, attachments, sort, reset]);
 
-  // Actualisation automatique toutes les 60 secondes.
+  // Actualisation automatique toutes les 15 secondes.
   const refreshRef = useRef(refresh);
   refreshRef.current = refresh;
 
@@ -150,6 +168,9 @@ export function useMessages(folder: string, filters: MessagesFilters) {
     total,
     loading,
     loadingMore,
+    refreshing,
+    newCount,
+    clearNewCount: () => setNewCount(0),
     error,
     hasMore: items.length < total,
     reload: reset,
@@ -158,3 +179,4 @@ export function useMessages(folder: string, filters: MessagesFilters) {
     retry: refresh,
   };
 }
+

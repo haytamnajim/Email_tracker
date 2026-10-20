@@ -10,6 +10,7 @@ export const config = {
   /** true = 30 emails factices, aucune connexion IMAP (valeur par défaut : sécurité) */
   demoMode: (process.env.DEMO_MODE ?? 'true').toLowerCase() === 'true',
   port: Number(process.env.PORT ?? 3001),
+  n8nWebhookUrl: process.env.N8N_WEBHOOK_URL ?? '',
   imap: {
     host: process.env.IMAP_HOST ?? '',
     port: Number(process.env.IMAP_PORT ?? 993),

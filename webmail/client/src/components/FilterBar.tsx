@@ -1,4 +1,7 @@
-﻿export interface MessageFilters {
+﻿import { toneBackground, toneInk } from '../utils/colors';
+import type { Tone } from '../utils/colors';
+
+export interface MessageFilters {
   unread: boolean;
   flagged: boolean;
   attachments: boolean;
@@ -10,17 +13,21 @@ interface FilterBarProps {
   onChange: (filters: MessageFilters) => void;
 }
 
-const TOGGLES: Array<{ key: 'unread' | 'flagged' | 'attachments'; label: string }> = [
-  { key: 'unread', label: 'Non lus' },
-  { key: 'flagged', label: 'Favoris' },
-  { key: 'attachments', label: 'Pièces jointes' },
+const TOGGLES: Array<{
+  key: 'unread' | 'flagged' | 'attachments';
+  label: string;
+  tone: Tone;
+}> = [
+  { key: 'unread', label: 'Non lus', tone: 'blue' },
+  { key: 'flagged', label: 'Favoris', tone: 'amber' },
+  { key: 'attachments', label: 'Pièces jointes', tone: 'green' },
 ];
 
-/** Filtres (non lus, favoris, pièces jointes) et tri par date. */
+/** Filtres (non lus, favoris, pièces jointes) et tri par date — chips Material 3. */
 export default function FilterBar({ filters, onChange }: FilterBarProps) {
   return (
-    <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Filtres">
-      {TOGGLES.map(({ key, label }) => {
+    <div className="flex min-w-0 flex-wrap items-center gap-2" role="group" aria-label="Filtres">
+      {TOGGLES.map(({ key, label, tone }) => {
         const active = filters[key];
         return (
           <button
@@ -28,12 +35,11 @@ export default function FilterBar({ filters, onChange }: FilterBarProps) {
             type="button"
             onClick={() => onChange({ ...filters, [key]: !active })}
             aria-pressed={active}
-            className="rounded-full border px-3 py-1 text-xs font-medium transition-all duration-200 hover:scale-105"
+            className="h-8 shrink-0 rounded-lg border px-3 text-[13px] font-medium transition-colors"
             style={{
-              background: active ? 'var(--accent-soft)' : 'var(--surface-2)',
-              borderColor: active ? 'var(--accent-line)' : 'var(--line-strong)',
-              color: active ? 'var(--accent-ink)' : 'var(--ink-dim)',
-              boxShadow: active ? '0 0 10px var(--accent-glow)' : 'none',
+              background: active ? toneBackground(tone) : 'transparent',
+              borderColor: active ? 'transparent' : 'var(--line-strong)',
+              color: active ? toneInk(tone) : 'var(--ink-dim)',
             }}
           >
             {label}
@@ -50,7 +56,7 @@ export default function FilterBar({ filters, onChange }: FilterBarProps) {
         onChange={(event) =>
           onChange({ ...filters, sort: event.target.value === 'asc' ? 'asc' : 'desc' })
         }
-        className="cursor-pointer rounded-lg border border-line-strong bg-surface-2 px-2 py-1 text-xs font-medium text-ink-dim"
+        className="h-8 shrink-0 cursor-pointer rounded-lg border border-line-strong bg-surface px-2 text-[13px] font-medium text-ink-dim"
       >
         <option value="desc">Date : récent d'abord</option>
         <option value="asc">Date : ancien d'abord</option>

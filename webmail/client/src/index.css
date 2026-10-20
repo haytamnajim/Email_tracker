@@ -3,87 +3,150 @@
 @tailwind utilities;
 
 /* ═══════════════════════════════════════════════════════════
-   Jetons de design — une seule source de vérité.
-   Le thème clair et le thème sombre partagent la même identité
-   violette ; seul le jeu de couleurs change.
+   Jetons de design — palette Gmail (Material 3 de Google).
+
+   Valeurs relevées dans les jetons officiels Google :
+     clair  #FFFFFF #1F1F1F #444746 #5F6368 #E3E3E3 #F0F3F4
+            #0B57D0 #0842A0 #D3E3FD #041E49
+     sombre #111111 #1F1F1F #202124 #3C4043 #444746
+            #A8C7FA #8AB4F8 #004A77 #E8EAED #9AA0A6
+
+   Une seule source de vérité : tout le composant lit var(--…).
    ═══════════════════════════════════════════════════════════ */
 
 :root {
   color-scheme: light;
 
-  --bg: linear-gradient(135deg, #f7f5ff 0%, #eef2ff 50%, #f0f9ff 100%);
+  /* Surfaces — Palette officielle Gmail Material 3 */
+  --canvas-bg: #f6f8fc;
+  --bg: #f6f8fc;
+  --surface: #ffffff;
+  --surface-3: #f0f3f4;
+  --search-bg: #eaf1fb;
+  --compose-bg: #c2e7ff;
+  --compose-ink: #001d35;
 
-  --surface: rgba(255, 255, 255, 0.72);
-  --surface-2: rgba(255, 255, 255, 0.88);
-  --surface-3: rgba(255, 255, 255, 0.96);
+  /* Traits */
+  --line: #e3e3e3;
+  --line-strong: #dadce0;
 
-  /* Doit rester identique à FRAME_COLORS.light dans MessageReader.tsx :
-     l'iframe est un document isolé qui ne voit pas cette variable. */
+  /* Texte */
+  --ink: #1f1f1f;
+  --ink-dim: #444746;
+  --ink-faint: #5f6368;
+
+  /* Bleu Gmail */
+  --accent: #0b57d0;
+  --accent-ink: #0b57d0;
+  --accent-soft: #d3e3fd;
+  --accent-line: #d3e3fd;
+  /* Texte posé SUR la sélection bleue (fond #d3e3fd) */
+  --on-accent: #0b57d0;
+
+  /* Teintes de la palette de marque Google.
+     Le jaune et le cyan d'origine (#fbbc04, #24c2e0) tombent à 1,71 et 2,13
+     sur blanc : on remonte à leurs paliers plus foncés pour garder 3:1. */
+  --tone-blue: #4285f4;
+  --tone-green: #34a853;
+  --tone-amber: #e37400;
+  --tone-red: #ea4335;
+  --tone-purple: #a142f4;
+  --tone-cyan: #0b8ea8;
+
+  /* Fonds teintés, avec le texte lisible par-dessus (≥ 5:1) */
+  --tone-blue-bg: #e8f0fe;
+  --tone-blue-ink: #0b57d0;
+  --tone-green-bg: #e6f4ea;
+  --tone-green-ink: #137333;
+  --tone-amber-bg: #fef7e0;
+  --tone-amber-ink: #a05600;
+  --tone-red-bg: #fce8e6;
+  --tone-red-ink: #c5221f;
+  --tone-purple-bg: #f3e8fd;
+  --tone-purple-ink: #7627bb;
+  --tone-cyan-bg: #e0f7fa;
+  --tone-cyan-ink: #00695c;
+
+  /* États de ligne et d'élément de navigation */
+  --row-hover: #f1f3f4;
+  --selected: #d3e3fd;
+
+  /* Sémantique */
+  --star: #f9ab00;
+  /* Contour : l'ambre Gmail (#f9ab00) seul ne vaut que 1,93:1 sur blanc.
+     Le contour porte la perception de la forme à 4,65:1 (WCAG 1.4.11). */
+  --star-line: #b06000;
+  --danger: #c5221f;
+  --warn-soft: #fef7e0;
+  --warn-ink: #a05600;
+
+  /* L'enveloppe de marque (rouge Gmail) */
+  --brand: #ea4335;
+
+  /* Fond du document isolé de l'iframe.
+     Doit rester identique à FRAME_COLORS.light de MessageReader.tsx :
+     l'iframe ne voit pas les variables CSS de l'application. */
   --reader-bg: #ffffff;
-
-  --line: rgba(15, 23, 42, 0.08);
-  --line-strong: rgba(15, 23, 42, 0.14);
-
-  --ink: #0f172a;
-  --ink-dim: #475569;
-  /* Assombri pour atteindre 5.0:1 sur le fond clair (WCAG AA) */
-  --ink-faint: #5d6b7f;
-
-  --accent: #7c3aed;
-  --accent-2: #4f46e5;
-  /* Texte d'accent lisible sur fond clair */
-  --accent-ink: #6d28d9;
-  --accent-soft: rgba(124, 58, 237, 0.1);
-  --accent-line: rgba(124, 58, 237, 0.3);
-  --accent-glow: rgba(124, 58, 237, 0.22);
-
-  /* Assombri pour atteindre 3.6:1 sur le fond clair (WCAG AA, graphique) */
-  --star: #c26a05;
-  --danger: #dc2626;
-  --danger-soft: rgba(220, 38, 38, 0.08);
-  --warn-soft: rgba(217, 119, 6, 0.1);
-  --warn-line: rgba(217, 119, 6, 0.3);
-  --warn-ink: #b45309;
-
-  --glass-blur: blur(20px) saturate(180%);
-  --placeholder: rgba(100, 116, 139, 0.55);
 }
 
 .dark {
   color-scheme: dark;
 
-  --bg: linear-gradient(135deg, #08080f 0%, #0d0820 50%, #080d1a 100%);
+  --canvas-bg: #1f1f1f;
+  --bg: #1f1f1f;
+  --surface: #141414;
+  --surface-3: #2a2b2e;
+  --search-bg: #2e3135;
+  --compose-bg: #004a77;
+  --compose-ink: #c2e7ff;
 
-  --surface: rgba(255, 255, 255, 0.02);
-  --surface-2: rgba(255, 255, 255, 0.04);
-  --surface-3: rgba(255, 255, 255, 0.06);
+  --line: #3c4043;
+  --line-strong: #444746;
 
-  /* Identique à FRAME_COLORS.dark dans MessageReader.tsx. */
-  --reader-bg: #0b0a16;
+  --ink: #e8eaed;
+  --ink-dim: #9aa0a6;
+  --ink-faint: #9aa0a6;
 
-  --line: rgba(255, 255, 255, 0.06);
-  --line-strong: rgba(255, 255, 255, 0.1);
+  --accent: #a8c7fa;
+  --accent-ink: #a8c7fa;
+  --accent-soft: #004a77;
+  --accent-line: #004a77;
+  --on-accent: #d3e3fd;
 
-  --ink: #e2e8f0;
-  --ink-dim: rgba(148, 163, 184, 0.85);
-  --ink-faint: rgba(148, 163, 184, 0.6);
+  /* Teintes Google en thème sombre (paliers clairs de la palette Material) */
+  --tone-blue: #8ab4f8;
+  --tone-green: #81c995;
+  --tone-amber: #fdd663;
+  --tone-red: #f28b82;
+  --tone-purple: #d7aefb;
+  --tone-cyan: #78d9ec;
 
-  --accent: #7c3aed;
-  --accent-2: #4f46e5;
-  --accent-ink: #a78bfa;
-  --accent-soft: rgba(124, 58, 237, 0.2);
-  --accent-line: rgba(124, 58, 237, 0.35);
-  --accent-glow: rgba(124, 58, 237, 0.35);
+  --tone-blue-bg: #004a77;
+  --tone-blue-ink: #d3e3fd;
+  --tone-green-bg: #0d3b24;
+  --tone-green-ink: #6dd58c;
+  --tone-amber-bg: #3c2f00;
+  --tone-amber-ink: #fdd663;
+  --tone-red-bg: #3c1010;
+  --tone-red-ink: #f28b82;
+  --tone-purple-bg: #341254;
+  --tone-purple-ink: #d7aefb;
+  --tone-cyan-bg: #00333a;
+  --tone-cyan-ink: #78d9ec;
 
-  --star: #fbbf24;
-  --danger: #f87171;
-  --danger-soft: rgba(248, 113, 113, 0.1);
-  --warn-soft: rgba(251, 191, 36, 0.08);
-  --warn-line: rgba(251, 191, 36, 0.25);
-  --warn-ink: #fcd34d;
+  --row-hover: #282a2c;
+  --selected: #004a77;
 
-  --glass-blur: blur(20px) saturate(180%);
-  --placeholder: rgba(148, 163, 184, 0.45);
+  --star: #f9ab00;
+  --star-line: #f9ab00;
+  --danger: #f28b82;
+  --warn-soft: #3c2f00;
+  --warn-ink: #fdd663;
+
+  --brand: #f28b82;
+
+  /* Identique à FRAME_COLORS.dark de MessageReader.tsx. */
+  --reader-bg: #111111;
 }
 
 html,
@@ -94,31 +157,33 @@ body,
 
 body {
   @apply antialiased;
+  font-family: 'Google Sans', 'Roboto', -apple-system, 'Segoe UI', Arial, sans-serif;
   background: var(--bg);
-  background-attachment: fixed;
   color: var(--ink);
 }
 
 /* ── Barres de défilement ── */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
   border-radius: 999px;
-  background: var(--line-strong);
+  background-clip: content-box;
+  background-color: var(--line-strong);
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--accent-line);
+  background-color: var(--ink-faint);
 }
 
 /* ── Sélection ── */
 ::selection {
-  background: var(--accent-soft);
-  color: var(--accent-ink);
+  background: var(--selected);
+  color: var(--ink);
 }
 
 /* ── Animations ── */
@@ -142,66 +207,24 @@ body {
   }
 }
 
-@keyframes pulseDot {
-  0%,
-  100% {
-    transform: scale(1);
-    opacity: 1;
-  }
-  50% {
-    transform: scale(1.4);
-    opacity: 0.6;
-  }
-}
-
 .animate-fade-slide {
-  animation: fadeSlideIn 0.22s ease-out forwards;
+  animation: fadeSlideIn 0.2s cubic-bezier(0.2, 0, 0, 1) forwards;
 }
 
+/* Fond des squelettes de chargement */
 .shimmer-bg {
   background: linear-gradient(
     90deg,
-    var(--surface-2) 25%,
-    var(--surface-3) 50%,
-    var(--surface-2) 75%
+    var(--surface-3) 25%,
+    var(--row-hover) 50%,
+    var(--surface-3) 75%
   );
   background-size: 200% 100%;
-  animation: shimmer 1.6s infinite;
+  animation: shimmer 1.4s ease-in-out infinite;
 }
 
-.pulse-dot {
-  animation: pulseDot 1.8s ease-in-out infinite;
-}
-
-/* ── Fonds vitrés ── */
-.glass {
-  backdrop-filter: var(--glass-blur);
-  background: var(--surface-2);
-  border: 1px solid var(--line);
-}
-
-.glass-strong {
-  backdrop-filter: var(--glass-blur);
-  background: var(--surface-3);
-  border: 1px solid var(--line);
-}
-
-/* ── Dégradé de l'application ── */
-.app-bg {
-  background: var(--bg);
-  background-attachment: fixed;
-}
-
-/* ── Marque « MailFlow » ── */
-.brand-text {
-  background: linear-gradient(135deg, var(--accent-ink), var(--accent-2));
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-}
-
-/* ── Accessibilité : anneau de focus visible partout ── */
-:where(button, a, input, select, [tabindex]):focus-visible {
+/* ── Accessibilité : anneau de focus visible, façon Material ── */
+:where(button, a, input, select, textarea, [tabindex]):focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }

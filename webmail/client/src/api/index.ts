@@ -13,10 +13,10 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string): Promise<T> {
+async function request<T>(path: string, options?: RequestInit): Promise<T> {
   let response: Response;
   try {
-    response = await fetch(path);
+    response = await fetch(path, options);
   } catch {
     throw new ApiError('Serveur injoignable. Vérifiez que le backend est bien démarré.', 0);
   }
@@ -59,3 +59,39 @@ export function fetchMessage(uid: number, folder: string): Promise<MessageDetail
 export function attachmentUrl(uid: number, index: number, folder: string): string {
   return `${BASE}/messages/${uid}/attachments/${index}?folder=${encodeURIComponent(folder)}`;
 }
+
+export interface GenerateReplyRequest {
+  webhookUrl?: string;
+  message: {
+    uid: number;
+    from: { name?: string; address?: string };
+    to?: Array<{ name?: string; address?: string }>;
+    subject: string;
+    date: string;
+    text?: string;
+    html?: string | null;
+  };
+  tone?: string;
+  instructions?: string;
+}
+
+export interface GenerateReplyResponse {
+  success: boolean;
+  reply: string;
+  source: 'n8n' | 'preview' | 'fallback';
+  warning?: string;
+  error?: string;
+}
+
+export function generateReplyWithN8n(payload: GenerateReplyRequest): Promise<GenerateReplyResponse> {
+  return request<GenerateReplyResponse>(`${BASE}/n8n/generate-reply`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+}
+
+export function getN8nConfig(): Promise<{ hasDefaultWebhook: boolean; defaultWebhookUrl: string | null }> {
+  return request<{ hasDefaultWebhook: boolean; defaultWebhookUrl: string | null }>(`${BASE}/n8n/config`);
+}
+

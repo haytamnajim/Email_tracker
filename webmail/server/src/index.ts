@@ -5,9 +5,11 @@ import { config, redact } from './config.ts';
 import { MailError } from './errors.ts';
 import { foldersRouter } from './routes/folders.ts';
 import { messagesRouter } from './routes/messages.ts';
+import { n8nRouter } from './routes/n8n.ts';
 
 const app = express();
 app.disable('x-powered-by');
+app.use(express.json());
 
 // L'API n'accepte que le client Vite servi en local.
 const allowedOrigins = new Set(['http://127.0.0.1:5173', 'http://localhost:5173']);
@@ -27,6 +29,7 @@ app.get('/api/health', (_req, res) => {
 
 app.use('/api/folders', foldersRouter);
 app.use('/api/messages', messagesRouter);
+app.use('/api/n8n', n8nRouter);
 
 app.use('/api', (_req, res) => {
   res.status(404).json({ error: 'Route inconnue.' });
