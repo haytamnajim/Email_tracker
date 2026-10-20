@@ -108,12 +108,31 @@ function toMailError(error: unknown): MailError {
   );
 }
 
+/** Connexion persistante réutilisée (pour lire un message précis). */
 async function run<T>(fn: (imap: ImapFlow) => Promise<T>): Promise<T> {
   try {
     const imap = await getClient();
     return await fn(imap);
   } catch (error) {
     throw toMailError(error);
+  }
+}
+
+/**
+ * Connexion FRAÎCHE à chaque appel (pour lister les messages).
+ * Garantit que les nouveaux emails arrivés sont toujours visibles.
+ */
+async function runFresh<T>(fn: (imap: ImapFlow) => Promise<T>): Promise<T> {
+  const imap = createClient();
+  try {
+    assertImapConfig();
+    await imap.connect();
+    const result = await fn(imap);
+    return result;
+  } catch (error) {
+    throw toMailError(error);
+  } finally {
+    try { imap.close(); } catch { /* ignore */ }
   }
 }
 
@@ -237,14 +256,8 @@ export async function imapListFolders(): Promise<Folder[]> {
 }
 
 export async function imapListMessages(query: MessageQuery): Promise<Paginated<MessageSummary>> {
-  return run(async (imap) => {
-    // Ferme et rouvre la mailbox pour forcer un SELECT frais et voir les nouveaux emails.
-    try {
-      if (imap.mailbox) await imap.mailboxClose();
-    } catch { /* ignore */ }
+  return runFresh(async (imap) => {
     await imap.mailboxOpen(query.folder, { readOnly: true });
-    // Envoie un NOOP pour forcer Gmail à flusher les mises à jour pending (EXISTS, RECENT).
-    try { await imap.noop(); } catch { /* ignore */ }
 
     const search: SearchObject = { all: true };
     if (query.unread) search.seen = false;
