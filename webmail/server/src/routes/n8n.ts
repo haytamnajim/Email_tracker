@@ -50,16 +50,28 @@ n8nRouter.post('/generate-reply', async (req: Request, res: Response) => {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 25000);
 
+    // Si le texte brut est vide mais qu'il y a du HTML, on extrait le texte du HTML.
+    const rawText = message.text?.trim() || '';
+    const htmlText = message.html
+      ? message.html
+          .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+          .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+          .replace(/<[^>]+>/g, ' ')
+          .replace(/\s{2,}/g, ' ')
+          .trim()
+      : '';
+    const emailBody = rawText || htmlText;
+
     const payload = {
       event: 'email_reply_generation',
       email: {
         uid: message.uid,
         from: message.from,
         to: message.to,
-        subject: message.subject,
+        subject: message.subject || '(aucun objet)',
         date: message.date,
-        text: message.text || '',
-        snippet: (message.text || '').slice(0, 500),
+        text: emailBody,
+        snippet: emailBody.slice(0, 600),
       },
       tone,
       instructions,
