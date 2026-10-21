@@ -3,7 +3,7 @@ import { ApiError, fetchMessages } from '../api';
 import type { MessageSummary } from '../types';
 
 export const PAGE_SIZE = 25;
-const AUTO_REFRESH_MS = 15_000;
+const AUTO_REFRESH_MS = 30_000;
 const SEARCH_DEBOUNCE_MS = 300;
 
 export interface MessagesFilters {

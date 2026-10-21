@@ -28,6 +28,8 @@ const MAX_SCANNED = 3000;
 let client: ImapFlow | null = null;
 let isConnected = false;
 let pendingConnection: Promise<ImapFlow> | null = null;
+let clientCreatedAt = 0;
+const MAX_CONNECTION_AGE_MS = 90_000; // Recycle la connexion toutes les 90s
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -49,6 +51,7 @@ function createClient(): ImapFlow {
     if (client === imap) {
       client = null;
       isConnected = false;
+      clientCreatedAt = 0;
     }
   };
   imap.on('error', drop);
@@ -83,12 +86,22 @@ async function connectWithRetry(): Promise<ImapFlow> {
 }
 
 async function getClient(): Promise<ImapFlow> {
+  // Recycle la connexion si elle est trop vieille pour voir les nouveaux emails.
+  const age = Date.now() - clientCreatedAt;
+  if (client && isConnected && age > MAX_CONNECTION_AGE_MS) {
+    try { client.close(); } catch { /* ignore */ }
+    client = null;
+    isConnected = false;
+    clientCreatedAt = 0;
+  }
+
   if (client && isConnected) return client;
   if (!pendingConnection) {
     pendingConnection = connectWithRetry()
       .then((imap) => {
         client = imap;
         isConnected = true;
+        clientCreatedAt = Date.now();
         return imap;
       })
       .finally(() => {
@@ -256,7 +269,7 @@ export async function imapListFolders(): Promise<Folder[]> {
 }
 
 export async function imapListMessages(query: MessageQuery): Promise<Paginated<MessageSummary>> {
-  return runFresh(async (imap) => {
+  return run(async (imap) => {
     await imap.mailboxOpen(query.folder, { readOnly: true });
 
     const search: SearchObject = { all: true };
