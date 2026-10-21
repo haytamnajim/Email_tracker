@@ -113,7 +113,7 @@ export default function N8nReplyModal({
             </div>
             <div>
               <h3 className="text-sm font-semibold text-[#1f1f1f] dark:text-[#e8eaed]">
-                Suggérer une réponse (n8n)
+                Suggérer une réponse
               </h3>
             </div>
           </div>

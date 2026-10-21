@@ -302,7 +302,7 @@ export default function MessageReader({
             type="button"
             onClick={handleDirectGenerateReply}
             disabled={isGeneratingReply}
-            title="Générer une réponse avec le workflow n8n"
+            title="Générer une réponse avec l'IA"
             className="flex h-9 w-9 items-center justify-center rounded-full text-[#444746] dark:text-[#c4c7c5] hover:bg-[#f1f3f4] dark:hover:bg-[#282a2c] hover:text-[#0b57d0] dark:hover:text-[#a8c7fa] transition-colors disabled:opacity-50"
           >
             <Sparkles className={`h-4 w-4 ${isGeneratingReply ? 'animate-spin text-[#0b57d0]' : ''}`} />
@@ -525,7 +525,7 @@ export default function MessageReader({
               className="inline-flex items-center gap-2 rounded-full border border-[#dadce0] dark:border-[#444746] px-5 py-2.5 text-sm font-medium text-[#0b57d0] dark:text-[#a8c7fa] hover:bg-[#eaf1fb] dark:hover:bg-[#004a77]/30 transition-colors cursor-pointer disabled:opacity-60"
             >
               <Sparkles className={`h-4 w-4 ${isGeneratingReply ? 'animate-spin' : ''}`} />
-              <span>{isGeneratingReply ? 'Génération en cours…' : 'Générer une réponse (n8n)'}</span>
+              <span>{isGeneratingReply ? 'Génération en cours…' : 'Générer une réponse'}</span>
             </button>
           </div>
         ) : (
