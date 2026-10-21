@@ -16,6 +16,7 @@ import {
   HardDrive,
   Bookmark,
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import type { Folder } from '../types';
 
 interface SidebarProps {
@@ -29,6 +30,91 @@ interface SidebarProps {
   starredCount?: number;
 }
 
+/** Durée et courbe d'animation partagées (ouverture / fermeture du sidebar). */
+const ANIM = 'transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] motion-reduce:transition-none';
+
+/**
+ * Entrée de navigation en pilule.
+ * En mode replié (collapsed), le libellé et le compteur s'effacent,
+ * la pilule se recentre et une pastille signale les messages non lus.
+ */
+function NavItem({
+  icon: Icon,
+  dotColor,
+  label,
+  unread = 0,
+  active,
+  onClick,
+  title,
+  collapsed,
+}: {
+  icon?: LucideIcon;
+  dotColor?: string;
+  label: string;
+  unread?: number;
+  active: boolean;
+  onClick: () => void;
+  title?: string;
+  collapsed: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title ?? label}
+      aria-current={active ? 'page' : undefined}
+      className={`group relative flex h-9 w-full cursor-pointer items-center rounded-full text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[#0b57d0] ${ANIM} ${
+        active
+          ? 'bg-[#d3e3fd] text-[#001d35] font-medium shadow-[0_1px_2px_rgba(60,64,67,0.10)] dark:bg-[#004a77] dark:text-[#d3e3fd]'
+          : 'text-[#444746] dark:text-[#c4c7c5] hover:bg-[#eaebef] hover:shadow-[0_1px_2px_rgba(60,64,67,0.08)] dark:hover:bg-[#282a2c]'
+      } ${collapsed ? 'justify-center gap-0 px-0' : 'justify-start gap-4 px-4'}`}
+    >
+      {Icon && (
+        <Icon
+          className={`h-4 w-4 shrink-0 transition-colors ${
+            active
+              ? 'text-[#0b57d0] dark:text-[#a8c7fa]'
+              : 'text-[#5f6368] dark:text-[#9aa0a6] group-hover:text-[#1f1f1f] dark:group-hover:text-[#e8eaed]'
+          }`}
+        />
+      )}
+      {dotColor && (
+        <span
+          className={`shrink-0 rounded-full ring-2 ring-black/5 dark:ring-white/10 ${ANIM} ${
+            collapsed ? 'h-2.5 w-2.5' : 'h-2.5 w-2.5'
+          }`}
+          style={{ backgroundColor: dotColor }}
+        />
+      )}
+
+      {/* Libellé : largeur et opacité animées */}
+      <span
+        className={`min-w-0 overflow-hidden whitespace-nowrap text-sm ${ANIM} ${
+          collapsed ? 'ml-0 max-w-0 opacity-0' : 'ml-0 max-w-[170px] flex-1 opacity-100'
+        }`}
+      >
+        {label}
+      </span>
+
+      {/* Compteur non-lus (mode déplié) */}
+      {unread > 0 && !collapsed && (
+        <span
+          className={`shrink-0 text-xs font-semibold tabular-nums ${ANIM} ${
+            active ? 'text-[#001d35] dark:text-[#d3e3fd]' : 'text-[#1f1f1f] dark:text-[#e8eaed]'
+          }`}
+        >
+          {unread}
+        </span>
+      )}
+
+      {/* Pastille non-lus (mode replié) */}
+      {unread > 0 && collapsed && (
+        <span className="absolute top-1.5 right-1.5 h-2.5 w-2.5 rounded-full border-2 border-[#f6f8fc] bg-[#0b57d0] dark:border-[#1f1f1f] dark:bg-[#a8c7fa]" />
+      )}
+    </button>
+  );
+}
+
 export default function Sidebar({
   folders,
   activeId,
@@ -40,7 +126,10 @@ export default function Sidebar({
   starredCount = 0,
 }: SidebarProps) {
   const [showMore, setShowMore] = useState(false);
+  const [showLabels, setShowLabels] = useState(true);
   const [activeLabel, setActiveLabel] = useState<string | null>(null);
+
+  const collapsed = !navOpen;
 
   // Normalisation des dossiers IMAP pour matcher les clés Gmail
   const findFolder = (predicate: (name: string, id: string) => boolean) => {
@@ -121,208 +210,162 @@ export default function Sidebar({
     { id: 'projects', name: 'Projets', color: '#a142f4' },
   ];
 
-  // Rendu en mode rail rétracté (icônes seules)
-  if (!navOpen) {
-    return (
-      <aside className="hidden md:flex flex-col items-center py-2 w-[72px] shrink-0 bg-[#f6f8fc] dark:bg-[#1f1f1f] select-none">
-        {/* Bouton Nouveau message rond */}
+  return (
+    <aside
+      aria-label="Dossiers de messagerie"
+      className={`hidden shrink-0 select-none overflow-y-auto overflow-x-hidden bg-[#f6f8fc] py-3 dark:bg-[#1f1f1f] md:flex md:flex-col ${ANIM} ${
+        navOpen ? 'w-[256px] px-3' : 'w-[72px] px-2'
+      }`}
+    >
+      {/* ── Bouton "Nouveau message" : cercle ⇄ pilule animé ── */}
+      <div className="mb-3">
         <button
           type="button"
           onClick={onCompose}
           title="Nouveau message"
-          className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#c2e7ff] text-[#001d35] shadow-sm hover:shadow-md hover:bg-[#b3d7f5] transition-all mb-4"
+          className={`group flex h-12 items-center overflow-hidden rounded-full bg-[#c2e7ff] text-left text-[#001d35] shadow-sm hover:bg-[#b3d7f5] hover:shadow-md active:scale-[0.98] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0b57d0] ${ANIM} ${
+            navOpen ? 'max-w-[220px] justify-start gap-4 pl-5 pr-7' : 'w-full max-w-[56px] justify-center gap-0 px-0'
+          }`}
         >
-          <Pencil className="h-5 w-5" />
-        </button>
-
-        <nav className="flex-1 w-full space-y-1 px-2">
-          {systemNavItems.slice(0, 5).map((item) => {
-            const active = activeId === item.id;
-            const IconComponent = item.icon;
-            return (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => onSelect(item.id)}
-                title={`${item.label}${item.unread > 0 ? ` (${item.unread})` : ''}`}
-                className={`relative flex h-11 w-full items-center justify-center rounded-full transition-colors ${
-                  active
-                    ? 'bg-[#d3e3fd] text-[#001d35] font-semibold dark:bg-[#004a77] dark:text-[#d3e3fd]'
-                    : 'text-[#444746] dark:text-[#c4c7c5] hover:bg-[#eaebef] dark:hover:bg-[#2b2d30]'
-                }`}
-              >
-                <IconComponent className={`h-5 w-5 ${active ? 'fill-current' : ''}`} />
-                {item.unread > 0 && (
-                  <span className="absolute top-2 right-2 flex h-2 w-2 rounded-full bg-[#0b57d0] dark:bg-[#a8c7fa]" />
-                )}
-              </button>
-            );
-          })}
-        </nav>
-      </aside>
-    );
-  }
-
-  // Rendu en mode volet complet (256px standard)
-  return (
-    <aside className="hidden md:flex flex-col w-[256px] shrink-0 bg-[#f6f8fc] dark:bg-[#1f1f1f] pr-3 py-2 select-none h-full overflow-y-auto">
-      {/* ── Bouton "Nouveau message" (Compose FAB) ── */}
-      <div className="px-2 mb-4">
-        <button
-          type="button"
-          onClick={onCompose}
-          className="inline-flex h-14 items-center gap-4 rounded-2xl bg-[#c2e7ff] text-[#001d35] px-6 text-sm font-semibold tracking-wide shadow-sm hover:shadow-md hover:bg-[#b3d7f5] transition-all cursor-pointer"
-        >
-          <Pencil className="h-5 w-5" />
-          <span>Nouveau message</span>
+          <Pencil className="h-5 w-5 shrink-0 transition-transform duration-200 group-hover:-rotate-6 motion-reduce:transition-none" />
+          <span
+            className={`overflow-hidden whitespace-nowrap text-sm font-medium ${ANIM} ${
+              navOpen ? 'max-w-[150px] opacity-100' : 'max-w-0 opacity-0'
+            }`}
+          >
+            Nouveau message
+          </span>
         </button>
       </div>
 
-      {/* ── Liste des dossiers et sections système ── */}
-      <nav aria-label="Dossiers de messagerie" className="flex-1 space-y-0.5">
-        {systemNavItems.map((item) => {
-          const active = activeId === item.id && activeLabel === null;
-          const IconComponent = item.icon;
-          return (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => {
-                setActiveLabel(null);
-                onSelect(item.id);
-              }}
-              className={`group flex h-8 w-full items-center gap-4 rounded-r-full pl-6 pr-4 text-left text-sm transition-colors cursor-pointer ${
-                active
-                  ? 'bg-[#d3e3fd] text-[#001d35] font-semibold dark:bg-[#004a77] dark:text-[#d3e3fd]'
-                  : 'text-[#444746] dark:text-[#c4c7c5] hover:bg-[#e9eef6] dark:hover:bg-[#2b2d30]'
-              }`}
-            >
-              <IconComponent
-                className={`h-4 w-4 shrink-0 ${
-                  active ? 'text-[#001d35] dark:text-[#d3e3fd]' : 'text-[#444746] dark:text-[#c4c7c5]'
-                }`}
-              />
-              <span className="truncate flex-1">{item.label}</span>
-              {item.unread > 0 && (
-                <span
-                  className={`text-xs tabular-nums font-semibold ${
-                    active ? 'text-[#001d35] dark:text-[#d3e3fd]' : 'text-[#1f1f1f] dark:text-[#e8eaed]'
-                  }`}
-                >
-                  {item.unread}
-                </span>
-              )}
-            </button>
-          );
-        })}
+      {/* ── Dossiers système ── */}
+      <nav aria-label="Dossiers" className="flex-1 space-y-1">
+        {systemNavItems.map((item) => (
+          <NavItem
+            key={item.id}
+            icon={item.icon}
+            label={item.label}
+            unread={item.unread}
+            collapsed={collapsed}
+            active={activeId === item.id && activeLabel === null}
+            onClick={() => {
+              setActiveLabel(null);
+              onSelect(item.id);
+            }}
+          />
+        ))}
 
-        {/* Bouton Plus / Moins */}
-        <button
-          type="button"
-          onClick={() => setShowMore((prev) => !prev)}
-          className="flex h-8 w-full items-center gap-4 rounded-r-full pl-6 pr-4 text-left text-sm text-[#444746] dark:text-[#c4c7c5] hover:bg-[#e9eef6] dark:hover:bg-[#2b2d30] transition-colors cursor-pointer"
+        {/* ── Bloc « Plus » + Libellés : se replie avec le sidebar ── */}
+        <div
+          className={`overflow-hidden ${ANIM} ${
+            navOpen ? 'mt-3 max-h-[700px] opacity-100' : 'mt-0 max-h-0 opacity-0 pointer-events-none'
+          }`}
         >
-          {showMore ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-          <span className="truncate">{showMore ? 'Moins' : 'Plus'}</span>
-        </button>
+          {/* Bouton Plus / Moins */}
+          <NavItem
+            icon={showMore ? ChevronUp : ChevronDown}
+            label={showMore ? 'Moins' : 'Plus'}
+            collapsed={false}
+            active={false}
+            onClick={() => setShowMore((prev) => !prev)}
+          />
 
-        {/* Éléments supplémentaires dans Plus */}
-        {showMore && (
-          <div className="space-y-0.5 pt-0.5 animate-fade-slide">
-            {moreNavItems.map((item) => {
-              const active = activeId === item.id && activeLabel === null;
-              const IconComponent = item.icon;
-              return (
-                <button
+          {/* Éléments supplémentaires dans Plus */}
+          {showMore && (
+            <div className="mt-1 space-y-1 pl-2 animate-fade-slide">
+              {moreNavItems.map((item) => (
+                <NavItem
                   key={item.id}
-                  type="button"
+                  icon={item.icon}
+                  label={item.label}
+                  unread={item.unread}
+                  collapsed={false}
+                  active={activeId === item.id && activeLabel === null}
                   onClick={() => {
                     setActiveLabel(null);
                     onSelect(item.id);
                   }}
-                  className={`flex h-8 w-full items-center gap-4 rounded-r-full pl-6 pr-4 text-left text-sm transition-colors cursor-pointer ${
-                    active
-                      ? 'bg-[#d3e3fd] text-[#001d35] font-semibold dark:bg-[#004a77] dark:text-[#d3e3fd]'
-                      : 'text-[#444746] dark:text-[#c4c7c5] hover:bg-[#e9eef6] dark:hover:bg-[#2b2d30]'
-                  }`}
-                >
-                  <IconComponent className="h-4 w-4 shrink-0 text-[#444746] dark:text-[#c4c7c5]" />
-                  <span className="truncate flex-1">{item.label}</span>
-                  {item.unread > 0 && (
-                    <span className="text-xs tabular-nums font-semibold text-[#1f1f1f] dark:text-[#e8eaed]">
-                      {item.unread}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        )}
+                />
+              ))}
+            </div>
+          )}
 
-        {/* ── Section Libellés (Labels) ── */}
-        <div className="pt-4 mt-2 border-t border-[#e0e2e7] dark:border-[#3c4043]">
-          <div className="flex items-center justify-between pl-6 pr-4 pb-1">
-            <span className="text-xs font-semibold text-[#444746] dark:text-[#c4c7c5]">
-              Libellés
-            </span>
-            <button
-              type="button"
-              title="Créer un libellé"
-              className="flex h-6 w-6 items-center justify-center rounded-full text-[#5f6368] dark:text-[#9aa0a6] hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
-            >
-              <Plus className="h-3.5 w-3.5" />
-            </button>
-          </div>
+          {/* ── Section Libellés (repliable) ── */}
+          <div className="mt-3 border-t border-[#e0e2e7] pt-3 dark:border-[#3c4043]">
+            <div className="flex items-center justify-between pr-2 pl-1">
+              <button
+                type="button"
+                onClick={() => setShowLabels((prev) => !prev)}
+                aria-expanded={showLabels}
+                className="flex h-8 flex-1 items-center gap-2 rounded-full pr-2 text-xs font-semibold tracking-wide text-[#5f6368] uppercase transition-colors hover:text-[#1f1f1f] dark:text-[#9aa0a6] dark:hover:text-[#e8eaed]"
+              >
+                {showLabels ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                Libellés
+              </button>
+              <button
+                type="button"
+                title="Créer un libellé"
+                className="flex h-6 w-6 items-center justify-center rounded-full text-[#5f6368] transition-colors hover:bg-black/5 hover:text-[#0b57d0] dark:text-[#9aa0a6] dark:hover:bg-white/10 dark:hover:text-[#a8c7fa]"
+              >
+                <Plus className="h-3.5 w-3.5" />
+              </button>
+            </div>
 
-          <div className="space-y-0.5">
-            {customLabels.map((lbl) => {
-              const active = activeLabel === lbl.id;
-              return (
-                <button
-                  key={lbl.id}
-                  type="button"
-                  onClick={() => {
-                    setActiveLabel(lbl.id);
-                    onSelect('INBOX');
-                  }}
-                  className={`flex h-8 w-full items-center gap-4 rounded-r-full pl-6 pr-4 text-left text-sm transition-colors cursor-pointer ${
-                    active
-                      ? 'bg-[#d3e3fd] text-[#001d35] font-semibold dark:bg-[#004a77] dark:text-[#d3e3fd]'
-                      : 'text-[#444746] dark:text-[#c4c7c5] hover:bg-[#e9eef6] dark:hover:bg-[#2b2d30]'
-                  }`}
-                >
-                  <span
-                    className="h-2.5 w-2.5 rounded-full shrink-0"
-                    style={{ backgroundColor: lbl.color }}
+            {showLabels && (
+              <div className="mt-1 space-y-1 animate-fade-slide">
+                {customLabels.map((lbl) => (
+                  <NavItem
+                    key={lbl.id}
+                    dotColor={lbl.color}
+                    label={lbl.name}
+                    collapsed={false}
+                    active={activeLabel === lbl.id}
+                    onClick={() => {
+                      setActiveLabel(lbl.id);
+                      onSelect('INBOX');
+                    }}
                   />
-                  <span className="truncate flex-1">{lbl.name}</span>
-                </button>
-              );
-            })}
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </nav>
 
-      {/* ── Pied de page : Stockage Google ── */}
-      <div className="mt-auto px-6 pt-4 pb-2 border-t border-[#e0e2e7] dark:border-[#3c4043]">
-        <div className="flex items-center justify-between text-xs text-[#5f6368] dark:text-[#9aa0a6] mb-1">
-          <span className="flex items-center gap-1.5 font-medium">
-            <HardDrive className="h-3.5 w-3.5" /> 1,45 Go utilisés
+      {/* ── Pied de page : Stockage (masqué proprement en mode replié) ── */}
+      <div
+        className={`mt-auto overflow-hidden border-t border-[#e0e2e7] px-1 dark:border-[#3c4043] ${ANIM} ${
+          navOpen ? 'max-h-[140px] pt-3 opacity-100' : 'max-h-0 pt-0 opacity-0'
+        }`}
+      >
+        <div className="mb-1.5 flex items-center justify-between text-xs text-[#5f6368] dark:text-[#9aa0a6]">
+          <span className={`flex items-center gap-1.5 overflow-hidden whitespace-nowrap font-medium ${ANIM} ${navOpen ? 'max-w-[160px] opacity-100' : 'max-w-0 opacity-0'}`}>
+            <HardDrive className="h-3.5 w-3.5 shrink-0" /> 1,45 Go utilisés
           </span>
           <button
             type="button"
             onClick={onRefresh}
             disabled={refreshing}
             title="Synchroniser IMAP"
-            className="flex h-5 w-5 items-center justify-center rounded-full text-[#444746] dark:text-[#c4c7c5] hover:bg-black/5 dark:hover:bg-white/10"
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[#5f6368] transition-all hover:bg-black/5 hover:text-[#0b57d0] disabled:opacity-50 dark:text-[#9aa0a6] dark:hover:bg-white/10 dark:hover:text-[#a8c7fa]"
           >
-            <RefreshCw className={`h-3 w-3 ${refreshing ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />
           </button>
         </div>
-        <div className="h-1 w-full overflow-hidden rounded-full bg-[#dadce0] dark:bg-[#444746]">
-          <div className="h-full rounded-full bg-[#0b57d0] dark:bg-[#a8c7fa]" style={{ width: '10%' }} />
+        <div
+          className="h-1 w-full overflow-hidden rounded-full bg-[#dadce0] dark:bg-[#444746]"
+          role="progressbar"
+          aria-valuenow={10}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-label="Espace de stockage utilisé"
+        >
+          <div
+            className="h-full rounded-full bg-gradient-to-r from-[#0b57d0] to-[#1a73e8] dark:from-[#a8c7fa] dark:to-[#8ab4f8]"
+            style={{ width: '10%' }}
+          />
         </div>
-        <p className="mt-1 text-[11px] text-[#5f6368] dark:text-[#9aa0a6]">
+        <p className={`mt-1 overflow-hidden whitespace-nowrap text-[11px] text-[#5f6368] dark:text-[#9aa0a6] ${ANIM} ${navOpen ? 'max-w-[180px] opacity-100' : 'max-w-0 opacity-0'}`}>
           sur 15 Go fournis par Google
         </p>
       </div>
