@@ -131,24 +131,6 @@ async function run<T>(fn: (imap: ImapFlow) => Promise<T>): Promise<T> {
   }
 }
 
-/**
- * Connexion FRAÎCHE à chaque appel (pour lister les messages).
- * Garantit que les nouveaux emails arrivés sont toujours visibles.
- */
-async function runFresh<T>(fn: (imap: ImapFlow) => Promise<T>): Promise<T> {
-  const imap = createClient();
-  try {
-    assertImapConfig();
-    await imap.connect();
-    const result = await fn(imap);
-    return result;
-  } catch (error) {
-    throw toMailError(error);
-  } finally {
-    try { imap.close(); } catch { /* ignore */ }
-  }
-}
-
 function flattenAddresses(input?: AddressObject | AddressObject[]): Address[] {
   if (!input) return [];
   const groups = Array.isArray(input) ? input : [input];

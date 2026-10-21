@@ -29,7 +29,7 @@ function useDebouncedValue<T>(value: T, delay: number): T {
 
 /**
  * Liste paginée d'un dossier : recherche (debounce 300 ms), filtres,
- * tri par date, chargement progressif et actualisation automatique (15 s).
+ * tri par date, chargement progressif et actualisation automatique (30 s).
  */
 export function useMessages(folder: string, filters: MessagesFilters) {
   const { q, unread, flagged, attachments, sort } = filters;
@@ -152,7 +152,7 @@ export function useMessages(folder: string, filters: MessagesFilters) {
     void reset();
   }, [folder, search, unread, flagged, attachments, sort, reset]);
 
-  // Actualisation automatique toutes les 15 secondes.
+  // Actualisation automatique toutes les 30 secondes.
   const refreshRef = useRef(refresh);
   refreshRef.current = refresh;
 
