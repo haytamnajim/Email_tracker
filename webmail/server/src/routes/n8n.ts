@@ -64,7 +64,7 @@ n8nRouter.post('/generate-reply', async (req: Request, res: Response) => {
 
     const payload = {
       event: 'email_reply_generation',
-      email: {
+      message: {
         uid: message.uid,
         from: message.from,
         to: message.to,
