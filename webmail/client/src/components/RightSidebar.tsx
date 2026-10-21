@@ -26,34 +26,79 @@ interface NoteItem {
   content: string;
 }
 
+/* ── Persistance localStorage (#10) : lectures/écritures protégées ── */
+
+const TASKS_KEY = 'webmail_tasks';
+const NOTES_KEY = 'webmail_notes';
+
+const DEFAULT_TASKS: TaskItem[] = [
+  { id: '1', text: 'Répondre aux emails importants', done: false },
+  { id: '2', text: 'Vérifier la configuration du serveur IMAP', done: true },
+  { id: '3', text: 'Télécharger les pièces jointes des factures', done: false },
+];
+
+const DEFAULT_NOTES: NoteItem[] = [
+  {
+    id: '1',
+    title: 'Identifiants IMAP',
+    content: 'Serveur: imap.gmail.com, Port: 993, Chiffrement: SSL/TLS',
+  },
+  {
+    id: '2',
+    title: 'Liste de courses',
+    content: 'Café, thé vert, fruits frais pour le bureau',
+  },
+];
+
+function loadStored<T>(key: string, fallback: T): T {
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as T) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function saveStored(key: string, value: unknown): void {
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Quota dépassé ou mode privé : on ignore silencieusement.
+  }
+}
+
 export default function RightSidebar() {
   const [activePanel, setActivePanel] = useState<CompanionPanelType>(null);
   const [collapsed, setCollapsed] = useState(false);
 
-  // Données interactives pour les tâches
-  const [tasks, setTasks] = useState<TaskItem[]>([
-    { id: '1', text: 'Répondre aux emails importants', done: false },
-    { id: '2', text: 'Vérifier la configuration du serveur IMAP', done: true },
-    { id: '3', text: 'Télécharger les pièces jointes des factures', done: false },
-  ]);
+  // Données interactives pour les tâches (persistées)
+  const [tasks, setTasks] = useState<TaskItem[]>(() => loadStored(TASKS_KEY, DEFAULT_TASKS));
   const [newTaskText, setNewTaskText] = useState('');
 
-  // Données interactives pour Google Keep
-  const [notes, setNotes] = useState<NoteItem[]>([
-    {
-      id: '1',
-      title: 'Identifiants IMAP',
-      content: 'Serveur: imap.gmail.com, Port: 993, Chiffrement: SSL/TLS',
-    },
-    {
-      id: '2',
-      title: 'Liste de courses',
-      content: 'Café, thé vert, fruits frais pour le bureau',
-    },
-  ]);
+  // Données interactives pour Google Keep (persistées)
+  const [notes, setNotes] = useState<NoteItem[]>(() => loadStored(NOTES_KEY, DEFAULT_NOTES));
   const [newNoteTitle, setNewNoteTitle] = useState('');
   const [newNoteContent, setNewNoteContent] = useState('');
   const [isAddingNote, setIsAddingNote] = useState(false);
+
+  // Sauvegarde automatique à chaque changement
+  const handleSetTasks = (updater: (prev: TaskItem[]) => TaskItem[]) => {
+    setTasks((prev) => {
+      const next = updater(prev);
+      saveStored(TASKS_KEY, next);
+      return next;
+    });
+  };
+
+  const handleSetNotes = (updater: (prev: NoteItem[]) => NoteItem[]) => {
+    setNotes((prev) => {
+      const next = updater(prev);
+      saveStored(NOTES_KEY, next);
+      return next;
+    });
+  };
 
   const togglePanel = (panel: CompanionPanelType) => {
     setActivePanel((current) => (current === panel ? null : panel));
@@ -62,7 +107,7 @@ export default function RightSidebar() {
   const handleAddTask = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTaskText.trim()) return;
-    setTasks((prev) => [
+    handleSetTasks((prev) => [
       { id: Date.now().toString(), text: newTaskText.trim(), done: false },
       ...prev,
     ]);
@@ -70,19 +115,19 @@ export default function RightSidebar() {
   };
 
   const toggleTask = (id: string) => {
-    setTasks((prev) =>
+    handleSetTasks((prev) =>
       prev.map((t) => (t.id === id ? { ...t, done: !t.done } : t)),
     );
   };
 
   const deleteTask = (id: string) => {
-    setTasks((prev) => prev.filter((t) => t.id !== id));
+    handleSetTasks((prev) => prev.filter((t) => t.id !== id));
   };
 
   const handleAddNote = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newNoteTitle.trim() && !newNoteContent.trim()) return;
-    setNotes((prev) => [
+    handleSetNotes((prev) => [
       {
         id: Date.now().toString(),
         title: newNoteTitle.trim() || 'Note sans titre',
@@ -96,7 +141,7 @@ export default function RightSidebar() {
   };
 
   const deleteNote = (id: string) => {
-    setNotes((prev) => prev.filter((n) => n.id !== id));
+    handleSetNotes((prev) => prev.filter((n) => n.id !== id));
   };
 
   if (collapsed) {

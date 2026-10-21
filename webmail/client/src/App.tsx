@@ -19,6 +19,7 @@ import { useFolders } from './hooks/useFolders';
 import { useMessage } from './hooks/useMessage';
 import { useMessages } from './hooks/useMessages';
 import { useTheme } from './hooks/useTheme';
+import { categorizeMessage, countByCategory } from './utils/categories';
 
 export default function App() {
   const { theme, toggleTheme, setTheme } = useTheme();
@@ -116,6 +117,17 @@ export default function App() {
       }));
   }, [rawItems, hiddenUids, readOverrides, starredUids]);
 
+  const isInbox = folderId.toLowerCase() === 'inbox';
+
+  // ── Filtrage par catégorie Gmail (#9) : uniquement en boîte de réception ──
+  const visibleItems = useMemo(() => {
+    if (!isInbox) return items;
+    return items.filter((item) => categorizeMessage(item) === activeCategory);
+  }, [items, isInbox, activeCategory]);
+
+  // Vrais compteurs par catégorie pour les badges des onglets (#9)
+  const categoryCounts = useMemo(() => countByCategory(items), [items]);
+
   // Initialisation des étoiles depuis les données distantes
   useEffect(() => {
     const remoteStarred = new Set<number>();
@@ -128,6 +140,13 @@ export default function App() {
   }, [rawItems]);
 
   const activeFolder = folders.find((f) => f.id === folderId);
+
+  // ── Titre d'onglet dynamique façon Gmail (#2) : (12) Boîte de réception - Gmail ──
+  useEffect(() => {
+    const unread = activeFolder?.unread ?? 0;
+    const label = activeFolder?.label ?? 'Boîte de réception';
+    document.title = unread > 0 ? `(${unread}) ${label} - Gmail` : `${label} - Gmail`;
+  }, [activeFolder]);
 
   // Actions de navigation
   const handleSelectFolder = useCallback((id: string) => {
@@ -164,26 +183,26 @@ export default function App() {
   }, []);
 
   const handleSelectAll = useCallback(() => {
-    setCheckedUids(new Set(items.map((i) => i.uid)));
-  }, [items]);
+    setCheckedUids(new Set(visibleItems.map((i) => i.uid)));
+  }, [visibleItems]);
 
   const handleSelectNone = useCallback(() => {
     setCheckedUids(new Set());
   }, []);
 
   const handleSelectRead = useCallback(() => {
-    setCheckedUids(new Set(items.filter((i) => i.isRead).map((i) => i.uid)));
-  }, [items]);
+    setCheckedUids(new Set(visibleItems.filter((i) => i.isRead).map((i) => i.uid)));
+  }, [visibleItems]);
 
   const handleSelectUnread = useCallback(() => {
-    setCheckedUids(new Set(items.filter((i) => !i.isRead).map((i) => i.uid)));
-  }, [items]);
+    setCheckedUids(new Set(visibleItems.filter((i) => !i.isRead).map((i) => i.uid)));
+  }, [visibleItems]);
 
   const handleSelectStarred = useCallback(() => {
     setCheckedUids(
-      new Set(items.filter((i) => starredUids.has(i.uid) || i.isFlagged).map((i) => i.uid)),
+      new Set(visibleItems.filter((i) => starredUids.has(i.uid) || i.isFlagged).map((i) => i.uid)),
     );
-  }, [items, starredUids]);
+  }, [visibleItems, starredUids]);
 
   // Toggles favoris et importants
   const handleToggleStar = useCallback((uid: number, e?: React.MouseEvent) => {
@@ -383,9 +402,9 @@ export default function App() {
     handleDelete,
   ]);
 
-  // Props pour la liste de messages
+  // Props pour la liste de messages (filtrée par catégorie)
   const listProps = {
-    items,
+    items: visibleItems,
     selectedUid,
     checkedUids,
     starredUids,
@@ -416,9 +435,15 @@ export default function App() {
     hasMore,
     onLoadMore: loadMore,
     onRetry: reloadMessages,
-    emptyTitle: search.trim() ? 'Aucun résultat trouvé' : 'Votre boîte de réception est vide',
+    emptyTitle: search.trim()
+      ? 'Aucun résultat trouvé'
+      : isInbox && activeCategory !== 'primary'
+      ? 'Aucun message dans cette catégorie'
+      : 'Votre boîte de réception est vide',
     emptyDescription: search.trim()
       ? 'Aucun message ne correspond à vos termes de recherche.'
+      : isInbox && activeCategory !== 'primary'
+      ? 'Les messages de cette catégorie apparaîtront ici lorsqu\'ils arriveront.'
       : 'Aucun nouveau message pour le moment.',
     density,
   };
@@ -426,7 +451,7 @@ export default function App() {
   // Props pour la barre d'outils
   const toolbarProps = {
     selectedCount: checkedUids.size,
-    totalVisible: items.length,
+    totalVisible: visibleItems.length,
     totalOverall: total,
     loading: messagesLoading,
     onRefresh: () => {
@@ -464,7 +489,6 @@ export default function App() {
     onSendReply: handleSendEmail,
   };
 
-  const isInbox = folderId.toLowerCase() === 'inbox';
   const showFullReader = splitView === 'none' && selectedUid !== null;
 
   return (
@@ -480,6 +504,17 @@ export default function App() {
         onOpenSettings={() => setSettingsOpen(true)}
         onOpenShortcuts={() => setShortcutsOpen(true)}
       />
+
+      {/* ── Barre de progression indéterminée façon Material (#4) ── */}
+      {(messagesLoading || refreshing || foldersLoading) && (
+        <div
+          role="progressbar"
+          aria-label="Chargement des messages"
+          className="relative h-[3px] w-full overflow-hidden bg-[#d3e3fd]/50 dark:bg-[#004a77]/40"
+        >
+          <div className="absolute inset-y-0 left-0 w-1/3 bg-[#0b57d0] dark:bg-[#a8c7fa] animate-progress-indeterminate" />
+        </div>
+      )}
 
       {/* ── 2. Corps principal : Barre latérale + Conteneur d'emails + Panneau compagnon ── */}
       <div className="flex min-h-0 flex-1 overflow-hidden pr-0 lg:pr-1 pb-2">
@@ -532,7 +567,7 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => { clearNewCount(); void reloadMessages(); }}
-                className="mx-3 mb-1 flex items-center justify-center gap-2 rounded-full bg-[#0b57d0] dark:bg-[#a8c7fa] text-white dark:text-[#001d35] py-2 text-xs font-semibold shadow-md animate-bounce hover:bg-[#0842a0] transition-colors"
+                className="mx-3 mb-1 flex items-center justify-center gap-2 rounded-full bg-[#0b57d0] dark:bg-[#a8c7fa] text-white dark:text-[#001d35] py-2 text-xs font-semibold shadow-md animate-banner hover:bg-[#0842a0] transition-colors"
               >
                 <span>🔔 {newCount} nouveau{newCount > 1 ? 'x' : ''} email{newCount > 1 ? 's' : ''} — Cliquez pour actualiser</span>
               </button>
@@ -568,11 +603,12 @@ export default function App() {
                     activeCategory={activeCategory}
                     onSelectCategory={setActiveCategory}
                     unreadCount={activeFolder?.unread ?? 0}
+                    categoryCounts={categoryCounts}
                   />
                 )}
                 {newCount > 0 && (
                   <button type="button" onClick={() => { clearNewCount(); void reloadMessages(); }}
-                    className="mx-3 mb-1 flex items-center justify-center gap-2 rounded-full bg-[#0b57d0] dark:bg-[#a8c7fa] text-white dark:text-[#001d35] py-1.5 text-xs font-semibold shadow-md animate-bounce hover:bg-[#0842a0] transition-colors">
+                    className="mx-3 mb-1 flex items-center justify-center gap-2 rounded-full bg-[#0b57d0] dark:bg-[#a8c7fa] text-white dark:text-[#001d35] py-1.5 text-xs font-semibold shadow-md animate-banner hover:bg-[#0842a0] transition-colors">
                     🔔 {newCount} nouveau{newCount > 1 ? 'x' : ''} email{newCount > 1 ? 's' : ''} — Actualiser
                   </button>
                 )}
@@ -597,11 +633,12 @@ export default function App() {
                     activeCategory={activeCategory}
                     onSelectCategory={setActiveCategory}
                     unreadCount={activeFolder?.unread ?? 0}
+                    categoryCounts={categoryCounts}
                   />
                 )}
                 {newCount > 0 && (
                   <button type="button" onClick={() => { clearNewCount(); void reloadMessages(); }}
-                    className="mx-3 mb-1 flex items-center justify-center gap-2 rounded-full bg-[#0b57d0] dark:bg-[#a8c7fa] text-white dark:text-[#001d35] py-1.5 text-xs font-semibold shadow-md animate-bounce hover:bg-[#0842a0] transition-colors">
+                    className="mx-3 mb-1 flex items-center justify-center gap-2 rounded-full bg-[#0b57d0] dark:bg-[#a8c7fa] text-white dark:text-[#001d35] py-1.5 text-xs font-semibold shadow-md animate-banner hover:bg-[#0842a0] transition-colors">
                     🔔 {newCount} nouveau{newCount > 1 ? 'x' : ''} email{newCount > 1 ? 's' : ''} — Actualiser
                   </button>
                 )}
@@ -625,11 +662,12 @@ export default function App() {
                   activeCategory={activeCategory}
                   onSelectCategory={setActiveCategory}
                   unreadCount={activeFolder?.unread ?? 0}
+                  categoryCounts={categoryCounts}
                 />
               )}
               {newCount > 0 && (
                 <button type="button" onClick={() => { clearNewCount(); void reloadMessages(); }}
-                  className="mx-3 mb-1 flex items-center justify-center gap-2 rounded-full bg-[#0b57d0] dark:bg-[#a8c7fa] text-white dark:text-[#001d35] py-2 text-xs font-semibold shadow-md animate-bounce hover:bg-[#0842a0] transition-colors">
+                  className="mx-3 mb-1 flex items-center justify-center gap-2 rounded-full bg-[#0b57d0] dark:bg-[#a8c7fa] text-white dark:text-[#001d35] py-2 text-xs font-semibold shadow-md animate-banner hover:bg-[#0842a0] transition-colors">
                   🔔 {newCount} nouveau{newCount > 1 ? 'x' : ''} email{newCount > 1 ? 's' : ''} — Cliquez pour actualiser
                 </button>
               )}

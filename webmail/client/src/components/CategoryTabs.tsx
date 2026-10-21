@@ -5,61 +5,77 @@ export type CategoryType = 'primary' | 'promotions' | 'social' | 'updates' | 'fo
 interface CategoryTabsProps {
   activeCategory: CategoryType;
   onSelectCategory: (category: CategoryType) => void;
+  /** Nombre de messages non lus (uniquement pour la catégorie Principale) */
   unreadCount?: number;
+  /** Nombre total de messages par catégorie (calculé côté client) */
+  categoryCounts?: Record<CategoryType, number>;
 }
 
 export default function CategoryTabs({
   activeCategory,
   onSelectCategory,
   unreadCount = 0,
+  categoryCounts,
 }: CategoryTabsProps) {
-  const categories = [
+  const categories: {
+    id: CategoryType;
+    label: string;
+    icon: typeof Inbox;
+    activeColor: string;
+    /** Badge affiché (null = rien) */
+    badge: string | null;
+    badgeColor: string;
+  }[] = [
     {
-      id: 'primary' as const,
+      id: 'primary',
       label: 'Principale',
       icon: Inbox,
       activeColor: '#0b57d0',
-      activeDarkColor: '#a8c7fa',
-      badge: unreadCount > 0 ? unreadCount : null,
+      badge: unreadCount > 0 ? `${unreadCount}` : null,
       badgeColor: 'bg-[#0b57d0] text-white',
     },
     {
-      id: 'promotions' as const,
+      id: 'promotions',
       label: 'Promotions',
       icon: Tag,
       activeColor: '#188038',
-      activeDarkColor: '#81c995',
-      badge: '3 nouv.',
+      badge: null,
       badgeColor: 'bg-[#188038] text-white',
     },
     {
-      id: 'social' as const,
+      id: 'social',
       label: 'Réseaux sociaux',
       icon: Users,
       activeColor: '#1a73e8',
-      activeDarkColor: '#8ab4f8',
       badge: null,
-      badgeColor: '',
+      badgeColor: 'bg-[#1a73e8] text-white',
     },
     {
-      id: 'updates' as const,
+      id: 'updates',
       label: 'Notifications',
       icon: Bell,
       activeColor: '#e37400',
-      activeDarkColor: '#fdd663',
-      badge: '1 nouv.',
+      badge: null,
       badgeColor: 'bg-[#e37400] text-white',
     },
     {
-      id: 'forums' as const,
+      id: 'forums',
       label: 'Forums',
       icon: MessageSquare,
       activeColor: '#a142f4',
-      activeDarkColor: '#d7aefb',
       badge: null,
-      badgeColor: '',
+      badgeColor: 'bg-[#a142f4] text-white',
     },
   ];
+
+  // Vrais compteurs calculés depuis les messages chargés (#9)
+  if (categoryCounts) {
+    for (const cat of categories) {
+      if (cat.id === 'primary') continue; // le badge Principale = non lus (Gmail)
+      const count = categoryCounts[cat.id] ?? 0;
+      cat.badge = count > 0 ? `${count}` : null;
+    }
+  }
 
   return (
     <div

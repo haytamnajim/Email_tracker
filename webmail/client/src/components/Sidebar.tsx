@@ -222,7 +222,7 @@ export default function Sidebar({
         <button
           type="button"
           onClick={onCompose}
-          title="Nouveau message"
+          title="Nouveau message (C)"
           className={`group flex h-12 items-center overflow-hidden rounded-full bg-[#c2e7ff] text-left text-[#001d35] shadow-sm hover:bg-[#b3d7f5] hover:shadow-md active:scale-[0.98] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0b57d0] ${ANIM} ${
             navOpen ? 'max-w-[220px] justify-start gap-4 pl-5 pr-7' : 'w-full max-w-[56px] justify-center gap-0 px-0'
           }`}

@@ -96,7 +96,7 @@ export default function SettingsDrawer({
               className={`flex items-center justify-between p-3 rounded-xl border text-xs font-semibold transition-all ${
                 theme === 'light'
                   ? 'border-[#0b57d0] bg-[#eaf1fb] text-[#0b57d0]'
-                  : 'border-[#dadce0] text-[#1f1f1f] hover:bg-[#f8f9fa]'
+                  : 'border-[#dadce0] dark:border-[#444746] text-[#1f1f1f] dark:text-[#e8eaed] hover:bg-[#f8f9fa] dark:hover:bg-[#282a2d]'
               }`}
             >
               <span>Clair</span>
@@ -108,7 +108,7 @@ export default function SettingsDrawer({
               className={`flex items-center justify-between p-3 rounded-xl border text-xs font-semibold transition-all ${
                 theme === 'dark'
                   ? 'border-[#a8c7fa] bg-[#004a77]/40 text-[#a8c7fa]'
-                  : 'border-[#444746] text-[#e8eaed] hover:bg-[#282a2d]'
+                  : 'border-[#dadce0] dark:border-[#444746] text-[#1f1f1f] dark:text-[#e8eaed] hover:bg-[#f8f9fa] dark:hover:bg-[#282a2d]'
               }`}
             >
               <span>Sombre</span>

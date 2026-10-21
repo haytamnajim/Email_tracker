@@ -50,10 +50,18 @@ export default function MessageItem({
   isImportant = false,
 }: MessageItemProps) {
   const [hovered, setHovered] = useState(false);
+  const [starPop, setStarPop] = useState(false);
 
   const sender = formatAddress(message.from) || 'Expéditeur inconnu';
   const unread = !message.isRead;
   const starred = isStarred || message.isFlagged;
+
+  // Pop animé de l'étoile à chaque activation (#6)
+  const handleStarClick = (e: React.MouseEvent) => {
+    setStarPop(true);
+    window.setTimeout(() => setStarPop(false), 340);
+    onToggleStar(message.uid, e);
+  };
 
   // Hauteur selon la densité
   const densityClass =
@@ -99,12 +107,12 @@ export default function MessageItem({
         {/* Étoile */}
         <button
           type="button"
-          onClick={(e) => onToggleStar(message.uid, e)}
-          title={starred ? 'Non suivi' : 'Suivre'}
+          onClick={handleStarClick}
+          title={starred ? 'Non suivi (S)' : 'Suivre (S)'}
           className="flex h-7 w-7 items-center justify-center rounded-full text-[#5f6368] dark:text-[#9aa0a6] hover:bg-black/5 dark:hover:bg-white/10"
         >
           <Star
-            className={`h-4 w-4 transition-colors ${
+            className={`h-4 w-4 transition-colors ${starPop ? 'animate-star-pop' : ''} ${
               starred
                 ? 'fill-[#f9ab00] text-[#f9ab00]'
                 : 'opacity-40 group-hover:opacity-100 hover:text-[#f9ab00]'
@@ -182,7 +190,7 @@ export default function MessageItem({
             <button
               type="button"
               onClick={(e) => onQuickArchive(message.uid, e)}
-              title="Archiver"
+              title="Archiver (E)"
               className="flex h-8 w-8 items-center justify-center rounded-full text-[#444746] dark:text-[#c4c7c5] hover:bg-black/10 dark:hover:bg-white/15 transition-colors"
             >
               <Archive className="h-4 w-4" />
@@ -190,7 +198,7 @@ export default function MessageItem({
             <button
               type="button"
               onClick={(e) => onQuickDelete(message.uid, e)}
-              title="Supprimer"
+              title="Supprimer (#)"
               className="flex h-8 w-8 items-center justify-center rounded-full text-[#444746] dark:text-[#c4c7c5] hover:bg-black/10 dark:hover:bg-white/15 transition-colors"
             >
               <Trash2 className="h-4 w-4" />

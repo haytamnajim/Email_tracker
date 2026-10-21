@@ -211,7 +211,7 @@ export default function MessageReader({
   };
 
   return (
-    <article className="flex h-full flex-col overflow-y-auto bg-white dark:bg-[#141414] select-text">
+    <article className="flex h-full flex-col overflow-y-auto bg-white dark:bg-[#141414] select-text animate-reader-in">
       {/* ── Barre d'outils supérieure Gmail ── */}
       <div className="flex h-12 shrink-0 items-center justify-between border-b border-[#e0e2e7] dark:border-[#3c4043] px-3 bg-white dark:bg-[#141414] sticky top-0 z-20">
         <div className="flex items-center gap-1">
@@ -229,7 +229,7 @@ export default function MessageReader({
           <button
             type="button"
             onClick={() => onArchive?.(message.uid)}
-            title="Archiver"
+            title="Archiver (E)"
             className="flex h-9 w-9 items-center justify-center rounded-full text-[#444746] dark:text-[#c4c7c5] hover:bg-[#f1f3f4] dark:hover:bg-[#282a2c] transition-colors"
           >
             <Archive className="h-4 w-4" />
@@ -246,7 +246,7 @@ export default function MessageReader({
           <button
             type="button"
             onClick={() => onDelete?.(message.uid)}
-            title="Supprimer"
+            title="Supprimer (#)"
             className="flex h-9 w-9 items-center justify-center rounded-full text-[#444746] dark:text-[#c4c7c5] hover:bg-[#f1f3f4] dark:hover:bg-[#282a2c] transition-colors"
           >
             <Trash2 className="h-4 w-4" />
@@ -333,7 +333,7 @@ export default function MessageReader({
         <button
           type="button"
           onClick={() => onToggleStar?.(message.uid)}
-          title={isStarred ? 'Supprimer le suivi' : 'Suivre ce message'}
+          title={isStarred ? 'Supprimer le suivi (S)' : 'Suivre ce message (S)'}
           className="flex h-8 w-8 items-center justify-center rounded-full text-[#5f6368] dark:text-[#9aa0a6] hover:bg-[#f1f3f4] dark:hover:bg-[#282a2c] shrink-0"
         >
           <Star
