@@ -133,13 +133,111 @@ n8nRouter.post('/generate-reply', async (req: Request, res: Response) => {
 });
 
 /**
+ * Interface pour l'envoi d'email via n8n
+ */
+interface SendEmailPayload {
+  sendWebhookUrl?: string;
+  to: string;
+  subject: string;
+  body: string;
+  messageUid?: number;
+}
+
+/**
+ * Route POST /api/n8n/send-email
+ * Transmet l'email à envoyer au webhook d'envoi n8n
+ */
+n8nRouter.post('/send-email', async (req: Request, res: Response) => {
+  const { sendWebhookUrl, to, subject, body, messageUid } = req.body as SendEmailPayload;
+
+  if (!to || !to.trim()) {
+    res.status(400).json({ success: false, error: 'Destinataire manquant.' });
+    return;
+  }
+
+  if (!body || !body.trim()) {
+    res.status(400).json({ success: false, error: 'Contenu du message vide.' });
+    return;
+  }
+
+  const targetUrl = (sendWebhookUrl || config.n8nSendWebhookUrl || config.n8nWebhookUrl || '').trim();
+
+  if (!targetUrl) {
+    res.status(400).json({
+      success: false,
+      error: "Aucune URL de webhook n8n n'a été configurée.",
+    });
+    return;
+  }
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
+
+    const payload = {
+      event: 'send_email',
+      to: to.trim(),
+      subject: (subject || '').trim(),
+      body: body.trim(),
+      messageUid,
+      sentAt: new Date().toISOString(),
+    };
+
+    const n8nResponse = await fetch(targetUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json, text/plain, */*',
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeout);
+
+    if (!n8nResponse.ok) {
+      const errorBody = await n8nResponse.text().catch(() => '');
+      throw new Error(`Le webhook n8n a renvoyé l'erreur ${n8nResponse.status} ${n8nResponse.statusText}${errorBody ? ` : ${errorBody.slice(0, 300)}` : ''}`);
+    }
+
+    let responseData: any = null;
+    const contentType = n8nResponse.headers.get('content-type') || '';
+    if (contentType.includes('application/json')) {
+      try {
+        responseData = await n8nResponse.json();
+      } catch {
+        responseData = null;
+      }
+    } else {
+      responseData = await n8nResponse.text().catch(() => '');
+    }
+
+    res.json({
+      success: true,
+      message: 'Email envoyé avec succès via le workflow n8n.',
+      details: responseData,
+    });
+  } catch (err: unknown) {
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    console.error('[n8n send-email error]', errorMessage);
+
+    res.json({
+      success: false,
+      error: `Erreur workflow n8n : ${errorMessage}`,
+    });
+  }
+});
+
+/**
  * Route GET /api/n8n/config
- * Renvoyer la configuration par défaut (ex. webhook configuré dans .env)
+ * Renvoyer la configuration par défaut (ex. webhooks configurés dans .env)
  */
 n8nRouter.get('/config', (_req: Request, res: Response) => {
   res.json({
     hasDefaultWebhook: Boolean(config.n8nWebhookUrl),
+    hasDefaultSendWebhook: Boolean(config.n8nSendWebhookUrl),
     defaultWebhookUrl: config.n8nWebhookUrl ? 'Configuré sur le serveur' : null,
+    defaultSendWebhookUrl: config.n8nSendWebhookUrl ? 'Configuré sur le serveur' : null,
   });
 });
 

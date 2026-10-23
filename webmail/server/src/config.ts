@@ -11,6 +11,7 @@ export const config = {
   demoMode: (process.env.DEMO_MODE ?? 'true').toLowerCase() === 'true',
   port: Number(process.env.PORT ?? 3001),
   n8nWebhookUrl: process.env.N8N_WEBHOOK_URL ?? '',
+  n8nSendWebhookUrl: process.env.N8N_SEND_WEBHOOK_URL ?? '',
   imap: {
     host: process.env.IMAP_HOST ?? '',
     port: Number(process.env.IMAP_PORT ?? 993),

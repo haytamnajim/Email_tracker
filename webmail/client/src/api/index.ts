@@ -91,7 +91,40 @@ export function generateReplyWithN8n(payload: GenerateReplyRequest): Promise<Gen
   });
 }
 
-export function getN8nConfig(): Promise<{ hasDefaultWebhook: boolean; defaultWebhookUrl: string | null }> {
-  return request<{ hasDefaultWebhook: boolean; defaultWebhookUrl: string | null }>(`${BASE}/n8n/config`);
+export interface SendEmailRequest {
+  sendWebhookUrl?: string;
+  to: string;
+  subject: string;
+  body: string;
+  messageUid?: number;
+}
+
+export interface SendEmailResponse {
+  success: boolean;
+  message?: string;
+  error?: string;
+  details?: unknown;
+}
+
+export function sendEmailWithN8n(payload: SendEmailRequest): Promise<SendEmailResponse> {
+  return request<SendEmailResponse>(`${BASE}/n8n/send-email`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+}
+
+export function getN8nConfig(): Promise<{
+  hasDefaultWebhook: boolean;
+  hasDefaultSendWebhook: boolean;
+  defaultWebhookUrl: string | null;
+  defaultSendWebhookUrl: string | null;
+}> {
+  return request<{
+    hasDefaultWebhook: boolean;
+    hasDefaultSendWebhook: boolean;
+    defaultWebhookUrl: string | null;
+    defaultSendWebhookUrl: string | null;
+  }>(`${BASE}/n8n/config`);
 }
 

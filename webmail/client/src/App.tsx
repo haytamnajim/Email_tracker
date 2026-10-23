@@ -21,6 +21,7 @@ import { useMessage } from './hooks/useMessage';
 import { useMessages } from './hooks/useMessages';
 import { useTheme } from './hooks/useTheme';
 import { categorizeMessage, countByCategory } from './utils/categories';
+import { sendEmailWithN8n } from './api';
 
 export default function App() {
   const { theme, toggleTheme, setTheme } = useTheme();
@@ -347,10 +348,31 @@ export default function App() {
     addToast(`${uidsToHide.length} conversation(s) mise(s) en attente.`);
   }, [checkedUids, addToast]);
 
-  // Envoi d'email simulé réaliste
+  // Envoi d'email via le webhook n8n
   const handleSendEmail = useCallback(
-    (to: string, subject: string) => {
-      addToast(`Message "${subject || 'Sans objet'}" envoyé à ${to}.`, 'Afficher le message');
+    async (to: string, subject: string, body: string, messageUid?: number): Promise<boolean> => {
+      const storedSendWebhook = localStorage.getItem('n8n_send_webhook_url') || undefined;
+      try {
+        const res = await sendEmailWithN8n({
+          sendWebhookUrl: storedSendWebhook,
+          to,
+          subject,
+          body,
+          messageUid,
+        });
+
+        if (res.success) {
+          addToast(`Message "${subject || 'Sans objet'}" envoyé avec succès à ${to}.`);
+          return true;
+        } else {
+          addToast(`Échec de l'envoi : ${res.error || 'Erreur n8n'}`);
+          return false;
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        addToast(`Erreur d'envoi n8n : ${msg}`);
+        return false;
+      }
     },
     [addToast],
   );
