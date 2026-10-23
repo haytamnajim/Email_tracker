@@ -1,0 +1,26 @@
+# ─────────────────────────────────────────────────────────────
+# Fichiers que graphify ne doit JAMAIS indexer.
+# Deuxième barrière, en plus du .gitignore : le .env contient
+# des identifiants IMAP réels qui ne doivent pas entrer dans
+# le graphe (ni dans graph.json, ni dans graph.html).
+# ─────────────────────────────────────────────────────────────
+
+# Secrets et identifiants
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.keystore
+
+# Dépendances et artefacts de build
+node_modules/
+dist/
+.git/
+.next/
+build/
+
+# Sortie générée par graphify elle-même
+graphify-out/
