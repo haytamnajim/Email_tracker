@@ -61,6 +61,15 @@ export interface MessageQuery {
   page: number;
   limit: number;
   q?: string;
+  /**
+   * Filtres avancés structurés. Ils sont transmis comme champs distincts plutôt
+   * que concaténés dans `q` : le client produisait autrefois une chaîne du type
+   * `from:toto@x.fr subject:contrat` que le serveur passait telle quelle en
+   * recherche IMAP TEXT — l'utilisateur obtenait « aucun résultat ».
+   */
+  from?: string;
+  to?: string;
+  subject?: string;
   unread?: boolean;
   flagged?: boolean;
   attachments?: boolean;

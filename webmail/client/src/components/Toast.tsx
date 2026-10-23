@@ -13,10 +13,16 @@ interface ToastProps {
 }
 
 export default function Toast({ toasts, onDismiss }: ToastProps) {
-  if (toasts.length === 0) return null;
-
+  // Le conteneur reste monté même vide : une région live doit exister dans le
+  // DOM AVANT d'être remplie, sinon le lecteur d'écran n'annonce pas la
+  // première annonce — donc « Conversation archivée — Annuler » était
+  // totalement inaudible, et l'annulation inaccessible.
   return (
-    <div className="fixed bottom-6 left-6 z-50 flex flex-col gap-2 pointer-events-none select-none">
+    <div
+      role="status"
+      aria-live="polite"
+      className="fixed bottom-6 left-6 z-50 flex flex-col gap-2 pointer-events-none select-none"
+    >
       {toasts.map((toast) => (
         <div
           key={toast.id}
@@ -40,9 +46,10 @@ export default function Toast({ toasts, onDismiss }: ToastProps) {
           <button
             type="button"
             onClick={() => onDismiss(toast.id)}
+            aria-label="Masquer la notification"
             className="text-[#9aa0a6] hover:text-white shrink-0"
           >
-            <X className="h-4 w-4" />
+            <X className="h-4 w-4" aria-hidden="true" />
           </button>
         </div>
       ))}

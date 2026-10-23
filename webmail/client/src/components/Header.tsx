@@ -26,6 +26,8 @@ import {
 import type { LucideIcon } from 'lucide-react';
 import GmailLogo from './GmailLogo';
 import type { Theme } from '../types';
+import { EMPTY_ADVANCED_FILTERS } from '../types';
+import type { AdvancedFilters } from '../types';
 import { useRipple } from '../utils/ripple';
 
 /**
@@ -55,6 +57,9 @@ interface HeaderProps {
   onToggleNav: () => void;
   search: string;
   onSearchChange: (query: string) => void;
+  /** Filtres avancés appliqués, pilotés par le parent */
+  advancedFilters: AdvancedFilters;
+  onAdvancedFilters: (filters: AdvancedFilters) => void;
   theme: Theme;
   onToggleTheme: () => void;
   onOpenSettings: () => void;
@@ -66,6 +71,8 @@ export default function Header({
   onToggleNav,
   search,
   onSearchChange,
+  advancedFilters,
+  onAdvancedFilters,
   theme,
   onToggleTheme,
   onOpenSettings,
@@ -96,6 +103,15 @@ export default function Header({
     setSearchInput(search);
   }, [search]);
 
+  // Le panneau garde un brouillon local pour permettre « Appliquer » ; on le
+  // resynchronise quand le parent change ses filtres (réinitialisation).
+  useEffect(() => {
+    setFilterFrom(advancedFilters.from);
+    setFilterTo(advancedFilters.to);
+    setFilterSubject(advancedFilters.subject);
+    setFilterHasAttachment(advancedFilters.hasAttachment);
+  }, [advancedFilters]);
+
   // Close popups on click outside
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -118,17 +134,27 @@ export default function Header({
 
   const handleApplyAdvancedFilter = (e: React.FormEvent) => {
     e.preventDefault();
-    const parts: string[] = [];
-    if (filterFrom.trim()) parts.push(`from:${filterFrom.trim()}`);
-    if (filterTo.trim()) parts.push(`to:${filterTo.trim()}`);
-    if (filterSubject.trim()) parts.push(`subject:${filterSubject.trim()}`);
-    if (filterHasAttachment) parts.push(`has:attachment`);
-    if (searchInput.trim()) parts.push(searchInput.trim());
-
-    const finalQuery = parts.join(' ');
-    setSearchInput(finalQuery);
-    onSearchChange(finalQuery);
+    // On transmet des champs STRUCTURÉS. La version précédente concaténait
+    // « from:x to:y subject:z » dans la barre de recherche : le serveur
+    // recevait cette chaîne entière et la passait en recherche IMAP TEXT,
+    // d'où « aucun résultat » pour tout filtre renseigné.
+    onAdvancedFilters({
+      from: filterFrom.trim(),
+      to: filterTo.trim(),
+      subject: filterSubject.trim(),
+      hasAttachment: filterHasAttachment,
+    });
     setFilterOpen(false);
+  };
+
+  const handleClearAdvancedFilter = () => {
+    setFilterFrom('');
+    setFilterTo('');
+    setFilterSubject('');
+    setFilterHasAttachment(false);
+    setSearchInput('');
+    onSearchChange('');
+    onAdvancedFilters(EMPTY_ADVANCED_FILTERS);
   };
 
   const handleClearSearch = () => {
@@ -265,15 +291,8 @@ export default function Header({
               <div className="flex items-center justify-between pt-3 border-t border-[#e0e2e7] dark:border-[#3c4043]">
                 <button
                   type="button"
-                  onClick={() => {
-                    setFilterFrom('');
-                    setFilterTo('');
-                    setFilterSubject('');
-                    setFilterHasAttachment(false);
-                    setSearchInput('');
-                    onSearchChange('');
-                  }}
-                  className="text-xs font-medium text-[#0b57d0] dark:text-[#a8c7fa] hover:underline"
+                  onClick={handleClearAdvancedFilter}
+                  className="text-xs font-medium text-[#0b57d0] hover:underline dark:text-[#a8c7fa]"
                 >
                   Réinitialiser
                 </button>

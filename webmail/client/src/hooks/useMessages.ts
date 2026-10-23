@@ -3,12 +3,22 @@ import { ApiError, fetchMessages } from '../api';
 import type { MessageSummary } from '../types';
 
 export const PAGE_SIZE = 25;
-const AUTO_REFRESH_MS = 30_000;
+/**
+ * Le cahier des charges impose une actualisation d'une minute. La valeur de
+ * 30 s qui était en place doublait la charge IMAP pour rien.
+ */
+const AUTO_REFRESH_MS = 60_000;
+/** Un simple Alt+Tab ne doit pas déclencher d'aller-retour IMAP. */
+const MIN_HIDDEN_BEFORE_REFRESH = 30_000;
 const SEARCH_DEBOUNCE_MS = 300;
 
 export interface MessagesFilters {
-  /** Saisie brute de l'utilisateur (le debounce est appliqué ici) */
+  /** Saisie libre (le debounce de 300 ms est appliqué ici) */
   q: string;
+  /** Filtres avancés, appliqués par le bouton « Appliquer » de l'en-tête */
+  from: string;
+  to: string;
+  subject: string;
   unread: boolean;
   flagged: boolean;
   attachments: boolean;
@@ -32,7 +42,7 @@ function useDebouncedValue<T>(value: T, delay: number): T {
  * tri par date, chargement progressif et actualisation automatique (30 s).
  */
 export function useMessages(folder: string, filters: MessagesFilters) {
-  const { q, unread, flagged, attachments, sort } = filters;
+  const { q, from, to, subject, unread, flagged, attachments, sort } = filters;
   const search = useDebouncedValue(q.trim(), SEARCH_DEBOUNCE_MS);
 
   const [items, setItems] = useState<MessageSummary[]>([]);
@@ -46,11 +56,11 @@ export function useMessages(folder: string, filters: MessagesFilters) {
   const requestId = useRef(0);
   const pagesRef = useRef(1);
   const mountedRef = useRef(true);
-  const criteria = useRef({ folder, search, unread, flagged, attachments, sort });
+  const criteria = useRef({ folder, search, from, to, subject, unread, flagged, attachments, sort });
   const knownUids = useRef<Set<number>>(new Set());
 
   // Les critères courants sont lus au moment de la requête : pas de closure périmée.
-  criteria.current = { folder, search, unread, flagged, attachments, sort };
+  criteria.current = { folder, search, from, to, subject, unread, flagged, attachments, sort };
 
   useEffect(() => {
     mountedRef.current = true;
@@ -64,6 +74,9 @@ export function useMessages(folder: string, filters: MessagesFilters) {
     page,
     limit: PAGE_SIZE,
     q: criteria.current.search || undefined,
+    from: criteria.current.from || undefined,
+    to: criteria.current.to || undefined,
+    subject: criteria.current.subject || undefined,
     unread: criteria.current.unread || undefined,
     flagged: criteria.current.flagged || undefined,
     attachments: criteria.current.attachments || undefined,
@@ -79,7 +92,12 @@ export function useMessages(folder: string, filters: MessagesFilters) {
     setNewCount(0);
     try {
       const result = await fetchMessages(buildQuery(1));
-      if (!mountedRef.current || id !== requestId.current) return;
+      if (!mountedRef.current || id !== requestId.current) {
+        // Requête évincée : on libère quand même l'indicateur, sinon la barre
+        // de progression resterait bloquée à l'écran jusqu'au prochain succès.
+        setLoading(false);
+        return;
+      }
       setItems(result.items);
       setTotal(result.total);
       setLoading(false);
@@ -102,13 +120,24 @@ export function useMessages(folder: string, filters: MessagesFilters) {
     setLoadingMore(true);
     try {
       const result = await fetchMessages(buildQuery(nextPage));
-      if (!mountedRef.current || id !== requestId.current) return;
+      if (!mountedRef.current || id !== requestId.current) {
+        // Même garde que dans reset : sinon le bouton « messages suivants »
+        // resterait désactivé avec son spinner après un changement de dossier.
+        setLoadingMore(false);
+        return;
+      }
       pagesRef.current = nextPage;
       setItems((current) => [...current, ...result.items]);
       setTotal(result.total);
+      // Sans cet ajout, l'actualisation suivante redécouvrirait ces messages
+      // comme s'ils étaient neufs et afficherait un faux bandeau.
+      result.items.forEach((item) => knownUids.current.add(item.uid));
       setLoadingMore(false);
     } catch (err) {
-      if (!mountedRef.current || id !== requestId.current) return;
+      if (!mountedRef.current || id !== requestId.current) {
+        setLoadingMore(false);
+        return;
+      }
       setError(err instanceof ApiError ? err.message : 'Erreur inattendue.');
       setLoadingMore(false);
     }
@@ -150,17 +179,41 @@ export function useMessages(folder: string, filters: MessagesFilters) {
   // Nouveaux critères => liste repart de zéro.
   useEffect(() => {
     void reset();
-  }, [folder, search, unread, flagged, attachments, sort, reset]);
+  }, [folder, search, from, to, subject, unread, flagged, attachments, sort, reset]);
 
-  // Actualisation automatique toutes les 30 secondes.
+  // Actualisation automatique.
+  //
+  // Deux règles, qui suppriment le gaspillage relevé à l'audit :
+  //  - jamais quand l'onglet est masqué : une session laissée ouverte la nuit
+  //    interrogeait l'IMAP toutes les 30 s pour rien ;
+  //  - au retour sur l'onglet, seulement si l'on a été absent suffisamment
+  //    longtemps, sinon un simple Alt+Tab déclencherait un aller-retour IMAP.
   const refreshRef = useRef(refresh);
   refreshRef.current = refresh;
 
   useEffect(() => {
+    let hiddenAt = 0;
+
     const timer = window.setInterval(() => {
+      if (document.hidden) return;
       void refreshRef.current();
     }, AUTO_REFRESH_MS);
-    return () => window.clearInterval(timer);
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        hiddenAt = Date.now();
+        return;
+      }
+      if (Date.now() - hiddenAt > MIN_HIDDEN_BEFORE_REFRESH) {
+        void refreshRef.current();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
   }, []);
 
   return {

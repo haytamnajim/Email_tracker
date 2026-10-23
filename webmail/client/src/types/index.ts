@@ -68,10 +68,33 @@ export interface MessageQuery {
   page: number;
   limit: number;
   q?: string;
+  /**
+   * Filtres avancés structurés. Ils partent comme champs distincts : les
+   * concaténer dans `q` (ce qui était fait) produisait une chaîne que le
+   * serveur passait en recherche TEXT, d'où « aucun résultat » systématique.
+   */
+  from?: string;
+  to?: string;
+  subject?: string;
   unread?: boolean;
   flagged?: boolean;
   attachments?: boolean;
   sort?: 'desc' | 'asc';
 }
+
+/** Valeurs du panneau « Filtres avancés » de l'en-tête. */
+export interface AdvancedFilters {
+  from: string;
+  to: string;
+  subject: string;
+  hasAttachment: boolean;
+}
+
+export const EMPTY_ADVANCED_FILTERS: AdvancedFilters = {
+  from: '',
+  to: '',
+  subject: '',
+  hasAttachment: false,
+};
 
 export type Theme = 'light' | 'dark';

@@ -34,12 +34,18 @@ messagesRouter.get(
     const sortRaw = req.query.sort;
     const sort = sortRaw === 'asc' || sortRaw === 'desc' ? sortRaw : 'desc';
     const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+    /** Filtre avancé : absent ou vide => critère non appliqué. */
+    const textParam = (value: unknown) =>
+      typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined;
 
     const query: MessageQuery = {
       folder: folderFrom(req.query.folder),
       page: parseIntParam(req.query.page, 'page', 1, 100_000, 1),
       limit: parseIntParam(req.query.limit, 'limit', 1, 100, 25),
       q: q === '' ? undefined : q,
+      from: textParam(req.query.from),
+      to: textParam(req.query.to),
+      subject: textParam(req.query.subject),
       unread: parseBooleanParam(req.query.unread, 'unread'),
       flagged: parseBooleanParam(req.query.flagged, 'flagged'),
       attachments: parseBooleanParam(req.query.attachments, 'attachments'),

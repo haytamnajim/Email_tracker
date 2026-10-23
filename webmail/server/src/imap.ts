@@ -258,6 +258,11 @@ export async function imapListMessages(query: MessageQuery): Promise<Paginated<M
     if (query.unread) search.seen = false;
     if (query.flagged) search.flagged = true;
     if (query.q) search.text = query.q;
+    // Filtres avancés : ce sont des critères IMAP (FROM / TO / SUBJECT) et non
+    // du texte à chercher. Ils comparent par sous-chaîne, comme dans Gmail.
+    if (query.from) search.from = query.from;
+    if (query.to) search.to = query.to;
+    if (query.subject) search.subject = query.subject;
 
     const found = await imap.search(search, { uid: true });
     let uids = Array.isArray(found) ? found : [];

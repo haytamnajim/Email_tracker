@@ -23,6 +23,8 @@ import { useTheme } from './hooks/useTheme';
 import { categorizeMessage, countByCategory } from './utils/categories';
 import { sendEmailWithN8n } from './api';
 import { Bell } from 'lucide-react';
+import { EMPTY_ADVANCED_FILTERS } from './types';
+import type { AdvancedFilters } from './types';
 
 export default function App() {
   const { theme, toggleTheme, setTheme } = useTheme();
@@ -33,6 +35,7 @@ export default function App() {
   const [selectedUid, setSelectedUid] = useState<number | null>(null);
   const [mobileView, setMobileView] = useState<'list' | 'read'>('list');
   const [search, setSearch] = useState('');
+  const [advancedFilters, setAdvancedFilters] = useState<AdvancedFilters>(EMPTY_ADVANCED_FILTERS);
   const [navOpen, setNavOpen] = useState(true);
 
   // Configuration Gmail
@@ -78,12 +81,17 @@ export default function App() {
   const filters = useMemo(
     () => ({
       q: search,
+      from: advancedFilters.from,
+      to: advancedFilters.to,
+      subject: advancedFilters.subject,
       unread: false,
       flagged: isVirtualStarred,
-      attachments: false,
+      // `has:attachment` tapé dans le panneau de filtres n'était jamais interprété :
+      // il se sert désormais du paramètre `attachments` que l'API acceptait déjà.
+      attachments: advancedFilters.hasAttachment,
       sort: 'desc' as const,
     }),
-    [search, isVirtualStarred],
+    [search, advancedFilters, isVirtualStarred],
   );
 
   const { folders, loading: foldersLoading, reload: reloadFolders } = useFolders(true);
@@ -176,6 +184,14 @@ export default function App() {
     setFolderId(id);
     setSelectedUid(null);
     setCheckedUids(new Set());
+    // Les UID IMAP ne sont uniques que DANS une mailbox. Sans cette purge,
+    // archiver le message 1234 de la boîte de réception faisait aussi
+    // disparaître le 1234 des messages envoyés et de la corbeille, et leur
+    // appliquait à tort lu/suivi/étoile.
+    setHiddenUids(new Set());
+    setStarredUids(new Set());
+    setImportantUids(new Set());
+    setReadOverrides(new Map());
     setMobileView('list');
   }, []);
 
@@ -401,6 +417,18 @@ export default function App() {
   // Raccourcis clavier globaux
   useEffect(() => {
     function handleGlobalKeyDown(e: KeyboardEvent) {
+      // Échap est traité AVANT la garde sur les champs de saisie. Autrement,
+      // rédiger un email puis appuyer sur Échap — le geste universel pour
+      // fermer — ne faisait rien du tout : le handler abandonnait dès qu'il
+      // voyait un INPUT ou une TEXTAREA.
+      if (e.key === 'Escape') {
+        if (composeOpen) setComposeOpen(false);
+        else if (settingsOpen) setSettingsOpen(false);
+        else if (shortcutsOpen) setShortcutsOpen(false);
+        else if (selectedUid !== null && splitView === 'none') setSelectedUid(null);
+        return;
+      }
+
       const target = e.target as HTMLElement;
       if (
         target.tagName === 'INPUT' ||
@@ -416,11 +444,6 @@ export default function App() {
       } else if (e.key === '?') {
         e.preventDefault();
         setShortcutsOpen((prev) => !prev);
-      } else if (e.key === 'Escape') {
-        if (composeOpen) setComposeOpen(false);
-        else if (settingsOpen) setSettingsOpen(false);
-        else if (shortcutsOpen) setShortcutsOpen(false);
-        else if (selectedUid !== null && splitView === 'none') setSelectedUid(null);
       } else if (
         (e.key === 's' || e.key === 'e' || e.key === '#') &&
         selectedUid !== null
@@ -534,6 +557,7 @@ export default function App() {
     onToggleStar: handleToggleStar,
     isStarred: selectedUid ? starredUids.has(selectedUid) : false,
     onSendReply: handleSendEmail,
+    onCancelReply: () => addToast('Génération de réponse annulée.'),
   };
 
   const showFullReader = splitView === 'none' && selectedUid !== null;
@@ -546,6 +570,8 @@ export default function App() {
         onToggleNav={() => setNavOpen((open) => !open)}
         search={search}
         onSearchChange={setSearch}
+        advancedFilters={advancedFilters}
+        onAdvancedFilters={setAdvancedFilters}
         theme={theme}
         onToggleTheme={toggleTheme}
         onOpenSettings={() => setSettingsOpen(true)}

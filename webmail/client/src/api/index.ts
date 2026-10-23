@@ -45,6 +45,9 @@ export function fetchMessages(query: MessageQuery): Promise<MessagesPage> {
   params.set('page', String(query.page));
   params.set('limit', String(query.limit));
   if (query.q) params.set('q', query.q);
+  if (query.from) params.set('from', query.from);
+  if (query.to) params.set('to', query.to);
+  if (query.subject) params.set('subject', query.subject);
   if (query.unread) params.set('unread', 'true');
   if (query.flagged) params.set('flagged', 'true');
   if (query.attachments) params.set('attachments', 'true');
@@ -112,6 +115,14 @@ export function sendEmailWithN8n(payload: SendEmailRequest): Promise<SendEmailRe
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
+}
+
+export function cancelReplyWithN8n(messageUid?: number, webhookUrl?: string): Promise<{ success: boolean }> {
+  return request<{ success: boolean }>(`${BASE}/n8n/cancel-reply`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ messageUid, webhookUrl }),
+  }).catch(() => ({ success: false }));
 }
 
 export function getN8nConfig(): Promise<{
