@@ -229,6 +229,42 @@ n8nRouter.post('/send-email', async (req: Request, res: Response) => {
 });
 
 /**
+ * Route POST /api/n8n/cancel-reply
+ * Informe le workflow n8n que l'utilisateur a annulé la réponse générée.
+ */
+n8nRouter.post('/cancel-reply', async (req: Request, res: Response) => {
+  const { webhookUrl, messageUid } = req.body;
+  const targetUrl = (webhookUrl || config.n8nWebhookUrl || '').trim();
+
+  if (!targetUrl) {
+    res.json({ success: true, ignored: true });
+    return;
+  }
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+
+    await fetch(targetUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        event: 'cancel_reply',
+        messageUid,
+        canceledAt: new Date().toISOString(),
+      }),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeout);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[n8n cancel-reply notice]', err);
+    res.json({ success: false });
+  }
+});
+
+/**
  * Route GET /api/n8n/config
  * Renvoyer la configuration par défaut (ex. webhooks configurés dans .env)
  */

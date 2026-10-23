@@ -25,7 +25,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import type { MessageDetail, Theme } from '../types';
-import { attachmentUrl, generateReplyWithN8n } from '../api';
+import { attachmentUrl, generateReplyWithN8n, cancelReplyWithN8n } from '../api';
 import { containsRemoteImages, sanitizeEmailHtml } from '../utils/html';
 import { formatAddressList, formatBytes, formatFullDate } from '../utils/format';
 import { senderGradient, senderInitials } from '../utils/colors';
@@ -44,6 +44,7 @@ interface MessageReaderProps {
   onToggleStar?: (uid: number) => void;
   isStarred?: boolean;
   onSendReply?: (to: string, subject: string, body: string, uid?: number) => Promise<boolean | void> | void;
+  onCancelReply?: () => void;
 }
 
 const FRAME_COLORS: Record<Theme, { bg: string; ink: string; muted: string; quote: string }> = {
@@ -99,6 +100,7 @@ export default function MessageReader({
   onToggleStar,
   isStarred = false,
   onSendReply,
+  onCancelReply,
 }: MessageReaderProps) {
   const [allowRemoteImages, setAllowRemoteImages] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -218,6 +220,14 @@ export default function MessageReader({
     } finally {
       setReplySending(false);
     }
+  };
+
+  const handleCancelReply = () => {
+    cancelReplyWithN8n(message.uid);
+    onCancelReply?.();
+    setReplyMode(null);
+    setReplyText('');
+    setGenerationError(null);
   };
 
   return (
@@ -560,7 +570,7 @@ export default function MessageReader({
 
                 <button
                   type="button"
-                  onClick={() => setReplyMode(null)}
+                  onClick={handleCancelReply}
                   className="flex h-6 w-6 items-center justify-center rounded-full text-[#5f6368] dark:text-[#9aa0a6] hover:bg-black/5 dark:hover:bg-white/10"
                 >
                   <X className="h-3.5 w-3.5" />
@@ -608,7 +618,7 @@ export default function MessageReader({
                 </button>
                 <button
                   type="button"
-                  onClick={() => setReplyMode(null)}
+                  onClick={handleCancelReply}
                   className="rounded-full px-4 py-2 text-xs font-medium text-[#444746] dark:text-[#c4c7c5] hover:bg-black/5 dark:hover:bg-white/10"
                 >
                   Ignorer
