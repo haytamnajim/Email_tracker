@@ -22,6 +22,7 @@ import { useMessages } from './hooks/useMessages';
 import { useTheme } from './hooks/useTheme';
 import { categorizeMessage, countByCategory } from './utils/categories';
 import { sendEmailWithN8n } from './api';
+import { Bell } from 'lucide-react';
 
 export default function App() {
   const { theme, toggleTheme, setTheme } = useTheme();
@@ -702,7 +703,8 @@ export default function App() {
               {newCount > 0 && (
                 <button type="button" onClick={() => { clearNewCount(); void reloadMessages(); }}
                   className="mx-3 mb-1 flex items-center justify-center gap-2 rounded-full bg-[#0b57d0] dark:bg-[#a8c7fa] text-white dark:text-[#001d35] py-2 text-xs font-semibold shadow-md animate-banner hover:bg-[#0842a0] transition-colors">
-                  🔔 {newCount} nouveau{newCount > 1 ? 'x' : ''} email{newCount > 1 ? 's' : ''} — Cliquez pour actualiser
+                  <Bell className="h-3.5 w-3.5 shrink-0" strokeWidth={2.5} aria-hidden="true" />
+                  {newCount} nouveau{newCount > 1 ? 'x' : ''} email{newCount > 1 ? 's' : ''} — Cliquez pour actualiser
                 </button>
               )}
               {refreshing && !messagesLoading && (

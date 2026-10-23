@@ -10,6 +10,8 @@ import {
   AlertCircle,
   ExternalLink,
   Bot,
+  Briefcase,
+  Zap,
 } from 'lucide-react';
 import type { MessageDetail } from '../types';
 import { generateReplyWithN8n } from '../api';
@@ -191,25 +193,29 @@ export default function N8nReplyModal({
             </label>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               {[
-                { id: 'professionnel' as const, label: 'Professionnel', icon: '💼' },
-                { id: 'concis' as const, label: 'Bref & Concis', icon: '⚡' },
-                { id: 'positif' as const, label: 'Accepter', icon: '✅' },
-                { id: 'decline' as const, label: 'Décliner', icon: '❌' },
-              ].map((opt) => (
-                <button
-                  key={opt.id}
-                  type="button"
-                  onClick={() => setTone(opt.id)}
-                  className={`flex flex-col items-center gap-1 p-2 rounded-xl border text-center transition-[background-color,border-color] ${
-                    tone === opt.id
-                      ? 'border-[#0b57d0] bg-[#eaf1fb] text-[#0b57d0] dark:border-[#a8c7fa] dark:bg-[#004a77]/30 dark:text-[#a8c7fa] font-semibold'
-                      : 'border-[#dadce0] dark:border-[#444746] text-[#444746] dark:text-[#c4c7c5] hover:bg-[#f8f9fa] dark:hover:bg-[#282a2d]'
-                  }`}
-                >
-                  <span className="text-base">{opt.icon}</span>
-                  <span className="text-[11px]">{opt.label}</span>
-                </button>
-              ))}
+                { id: 'professionnel' as const, label: 'Professionnel', icon: Briefcase },
+                { id: 'concis' as const, label: 'Bref & Concis', icon: Zap },
+                { id: 'positif' as const, label: 'Accepter', icon: Check },
+                { id: 'decline' as const, label: 'Décliner', icon: X },
+              ].map((opt) => {
+                const Icon = opt.icon;
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => setTone(opt.id)}
+                    aria-pressed={tone === opt.id}
+                    className={`flex flex-col items-center gap-1.5 rounded-xl border p-2.5 text-center transition-[background-color,border-color,transform] active:scale-[0.95] ${
+                      tone === opt.id
+                        ? 'border-[#0b57d0] bg-[#eaf1fb] font-semibold text-[#0b57d0] dark:border-[#a8c7fa] dark:bg-[#004a77]/30 dark:text-[#a8c7fa]'
+                        : 'border-[#dadce0] text-[#444746] hover:bg-[#f8f9fa] dark:border-[#444746] dark:text-[#c4c7c5] dark:hover:bg-[#282a2d]'
+                    }`}
+                  >
+                    <Icon className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
+                    <span className="text-[11px]">{opt.label}</span>
+                  </button>
+                );
+              })}
             </div>
           </div>
 

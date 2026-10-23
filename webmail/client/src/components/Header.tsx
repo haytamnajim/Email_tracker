@@ -13,9 +13,42 @@ import {
   HardDrive,
   ShieldCheck,
   ExternalLink,
+  Mail,
+  Calendar,
+  FolderOpen,
+  Video,
+  Lightbulb,
+  ListTodo,
+  Users,
+  MessageSquare,
+  Lock,
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import GmailLogo from './GmailLogo';
 import type { Theme } from '../types';
+import { useRipple } from '../utils/ripple';
+
+/**
+ * Grille de services. Chaque service porte sa teinte et son icône vectorielle :
+ * les émojis changent d'apparence selon la police et le système, se rendent
+ * mal en petit corps et ne peuvent pas être teintés. Ici les fonds sont
+ * choisis pour garder un contraste ≥ 3:1 avec l'icône blanche (WCAG AA,
+ * élément non textuel).
+ */
+const SERVICES: Array<{ name: string; icon: LucideIcon; color: string; active?: boolean }> = [
+  { name: 'Gmail', icon: Mail, color: '#d93025', active: true },
+  { name: 'Agenda', icon: Calendar, color: '#1a73e8' },
+  { name: 'Drive', icon: FolderOpen, color: '#188038' },
+  { name: 'Meet', icon: Video, color: '#007b83' },
+  { name: 'Keep', icon: Lightbulb, color: '#e37400' },
+  { name: 'Tâches', icon: ListTodo, color: '#8430ce' },
+  { name: 'Contacts', icon: Users, color: '#00796b' },
+  { name: 'Chat', icon: MessageSquare, color: '#185abc' },
+  { name: 'Vault', icon: Lock, color: '#5f6368' },
+];
+
+/** Cascade d'ouverture de la grille, comme pour les sections des paramètres. */
+const SERVICE_STEP = 22;
 
 interface HeaderProps {
   navOpen: boolean;
@@ -55,6 +88,8 @@ export default function Header({
   const appsRef = useRef<HTMLDivElement>(null);
   const accountRef = useRef<HTMLDivElement>(null);
   const helpRef = useRef<HTMLDivElement>(null);
+
+  const ripple = useRipple();
 
   // Sync external search prop
   useEffect(() => {
@@ -338,34 +373,45 @@ export default function Header({
           </button>
 
           {appsOpen && (
-            <div className="absolute right-0 top-12 z-50 w-72 rounded-2xl bg-white dark:bg-[#202124] p-4 shadow-2xl border border-[#e0e2e7] dark:border-[#3c4043] animate-fade-slide">
-              <p className="px-2 pb-2 text-xs font-semibold uppercase tracking-wider text-[#5f6368] dark:text-[#9aa0a6]">
-                Services connectés
-              </p>
-              <div className="grid grid-cols-3 gap-2">
-                {[
-                  { name: 'Gmail', icon: '✉️', active: true },
-                  { name: 'Agenda', icon: '📅' },
-                  { name: 'Drive', icon: '📁' },
-                  { name: 'Meet', icon: '📹' },
-                  { name: 'Keep', icon: '💡' },
-                  { name: 'Tâches', icon: '✅' },
-                  { name: 'Contacts', icon: '👥' },
-                  { name: 'Chat', icon: '💬' },
-                  { name: 'Vault', icon: '🔒' },
-                ].map((app) => (
-                  <button
-                    key={app.name}
-                    type="button"
-                    onClick={() => setAppsOpen(false)}
-                    className="flex flex-col items-center justify-center rounded-xl p-2.5 text-center transition-colors hover:bg-[#f1f3f4] dark:hover:bg-[#282a2c]"
-                  >
-                    <span className="text-2xl">{app.icon}</span>
-                    <span className="mt-1 text-[11px] font-medium text-[#1f1f1f] dark:text-[#e8eaed]">
-                      {app.name}
-                    </span>
-                  </button>
-                ))}
+            <div className="absolute right-0 top-12 z-50 w-[292px] rounded-2xl border border-[#e0e2e7] bg-white p-4 shadow-2xl animate-fade-slide dark:border-[#3c4043] dark:bg-[#202124]">
+              <div className="px-2 pb-3">
+                <p className="text-[13px] font-semibold text-[#1f1f1f] dark:text-[#e8eaed]">
+                  Services connectés
+                </p>
+                <p className="text-[11px] text-[#5f6368] dark:text-[#9aa0a6]">
+                  9 services · Gmail actuellement ouvert
+                </p>
+              </div>
+
+              <div className="grid grid-cols-3 gap-1">
+                {SERVICES.map((app, index) => {
+                  const Icon = app.icon;
+                  return (
+                    <button
+                      key={app.name}
+                      type="button"
+                      onClick={() => setAppsOpen(false)}
+                      onPointerDown={ripple}
+                      aria-label={`Ouvrir ${app.name}`}
+                      style={{ animationDelay: `${index * SERVICE_STEP}ms` }}
+                      className="ripple-host animate-fade-slide group flex flex-col items-center gap-1.5 rounded-xl p-2 text-center transition-[background-color,transform] hover:bg-[#f1f3f4] active:scale-[0.95] dark:hover:bg-[#282a2c]"
+                    >
+                      <span
+                        className={`flex h-10 w-10 items-center justify-center rounded-full text-white shadow-sm transition-transform group-hover:scale-110 ${
+                          app.active
+                            ? 'ring-2 ring-offset-2 ring-[#0b57d0] dark:ring-offset-[#202124]'
+                            : ''
+                        }`}
+                        style={{ background: app.color }}
+                      >
+                        <Icon className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden="true" />
+                      </span>
+                      <span className="text-[11px] font-medium text-[#1f1f1f] dark:text-[#e8eaed]">
+                        {app.name}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )}

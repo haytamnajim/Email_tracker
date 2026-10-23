@@ -15,6 +15,7 @@ import {
   CheckSquare2,
   MinusSquare,
   Keyboard,
+  Check,
 } from 'lucide-react';
 
 export type SplitViewMode = 'none' | 'vertical' | 'horizontal';
@@ -290,7 +291,7 @@ export default function TopToolbar({
                 }`}
               >
                 <span>Pas de séparation</span>
-                {splitView === 'none' && <span>✓</span>}
+                {splitView === 'none' && <Check className="h-4 w-4 shrink-0" aria-hidden="true" />}
               </button>
               <button
                 type="button"
@@ -303,7 +304,7 @@ export default function TopToolbar({
                 }`}
               >
                 <span>Séparation verticale</span>
-                {splitView === 'vertical' && <span>✓</span>}
+                {splitView === 'vertical' && <Check className="h-4 w-4 shrink-0" aria-hidden="true" />}
               </button>
               <button
                 type="button"
@@ -316,7 +317,7 @@ export default function TopToolbar({
                 }`}
               >
                 <span>Séparation horizontale</span>
-                {splitView === 'horizontal' && <span>✓</span>}
+                {splitView === 'horizontal' && <Check className="h-4 w-4 shrink-0" aria-hidden="true" />}
               </button>
             </div>
           )}
