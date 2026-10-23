@@ -10,6 +10,7 @@ import type { DisplayDensity } from './components/MessageItem';
 import MessageReader from './components/MessageReader';
 import RightSidebar from './components/RightSidebar';
 import ComposeModal from './components/ComposeModal';
+import NewEmailsBanner from './components/NewEmailsBanner';
 import SettingsDrawer from './components/SettingsDrawer';
 import ShortcutsModal from './components/ShortcutsModal';
 import Toast from './components/Toast';
@@ -564,13 +565,13 @@ export default function App() {
             )}
             {/* Banner nouveaux emails */}
             {newCount > 0 && (
-              <button
-                type="button"
-                onClick={() => { clearNewCount(); void reloadMessages(); }}
-                className="mx-3 mb-1 flex items-center justify-center gap-2 rounded-full bg-[#0b57d0] dark:bg-[#a8c7fa] text-white dark:text-[#001d35] py-2 text-xs font-semibold shadow-md animate-banner hover:bg-[#0842a0] transition-colors"
-              >
-                <span>🔔 {newCount} nouveau{newCount > 1 ? 'x' : ''} email{newCount > 1 ? 's' : ''} — Cliquez pour actualiser</span>
-              </button>
+              <NewEmailsBanner
+                count={newCount}
+                onRefresh={() => {
+                  clearNewCount();
+                  void reloadMessages();
+                }}
+              />
             )}
             {refreshing && !messagesLoading && (
               <div className="flex items-center justify-center gap-1.5 py-1 text-[10px] text-[#5f6368] dark:text-[#9aa0a6]">
@@ -607,10 +608,14 @@ export default function App() {
                   />
                 )}
                 {newCount > 0 && (
-                  <button type="button" onClick={() => { clearNewCount(); void reloadMessages(); }}
-                    className="mx-3 mb-1 flex items-center justify-center gap-2 rounded-full bg-[#0b57d0] dark:bg-[#a8c7fa] text-white dark:text-[#001d35] py-1.5 text-xs font-semibold shadow-md animate-banner hover:bg-[#0842a0] transition-colors">
-                    🔔 {newCount} nouveau{newCount > 1 ? 'x' : ''} email{newCount > 1 ? 's' : ''} — Actualiser
-                  </button>
+                  <NewEmailsBanner
+                    count={newCount}
+                    compact
+                    onRefresh={() => {
+                      clearNewCount();
+                      void reloadMessages();
+                    }}
+                  />
                 )}
                 {refreshing && !messagesLoading && (
                   <div className="flex items-center justify-center gap-1.5 py-0.5 text-[10px] text-[#5f6368] dark:text-[#9aa0a6]">
@@ -637,10 +642,14 @@ export default function App() {
                   />
                 )}
                 {newCount > 0 && (
-                  <button type="button" onClick={() => { clearNewCount(); void reloadMessages(); }}
-                    className="mx-3 mb-1 flex items-center justify-center gap-2 rounded-full bg-[#0b57d0] dark:bg-[#a8c7fa] text-white dark:text-[#001d35] py-1.5 text-xs font-semibold shadow-md animate-banner hover:bg-[#0842a0] transition-colors">
-                    🔔 {newCount} nouveau{newCount > 1 ? 'x' : ''} email{newCount > 1 ? 's' : ''} — Actualiser
-                  </button>
+                  <NewEmailsBanner
+                    count={newCount}
+                    compact
+                    onRefresh={() => {
+                      clearNewCount();
+                      void reloadMessages();
+                    }}
+                  />
                 )}
                 {refreshing && !messagesLoading && (
                   <div className="flex items-center justify-center gap-1.5 py-0.5 text-[10px] text-[#5f6368] dark:text-[#9aa0a6]">
