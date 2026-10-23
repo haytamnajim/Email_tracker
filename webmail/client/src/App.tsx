@@ -1,4 +1,4 @@
-import { useCallback, useState, useEffect, useMemo } from 'react';
+import { useCallback, useState, useEffect, useMemo, useRef } from 'react';
 import Header from './components/Header';
 import Sidebar from './components/Sidebar';
 import CategoryTabs from './components/CategoryTabs';
@@ -108,6 +108,26 @@ export default function App() {
     error: messageError,
     reload: reloadMessage,
   } = useMessage(selectedUid, effectiveImapFolder);
+
+  // ── Écran d'accueil ──
+  // Il est écrit en HTML/CSS inline dans index.html, donc affiché avant le
+  // chargement de JavaScript et des polices : c'est ce qui supprime le flash
+  // blanc au rafraîchissement. On ne le retire qu'ici, une fois que les
+  // données initiales sont arrivées — pas dès le montage, sinon l'utilisateur
+  // verrait un contenu vide pendant que l'IMAP travaille.
+  const splashRetiredRef = useRef(false);
+  useEffect(() => {
+    if (splashRetiredRef.current) return;
+    if (foldersLoading || messagesLoading) return;
+    splashRetiredRef.current = true;
+
+    const splash = document.getElementById('splash');
+    if (!splash) return;
+    splash.classList.add('is-done');
+    // La transition d'opacité vaut 300 ms : on purge le nœud à la fin.
+    const purge = window.setTimeout(() => splash.remove(), 340);
+    return () => window.clearTimeout(purge);
+  }, [foldersLoading, messagesLoading]);
 
   // Application des surcharges locales (masquage, lu/non lu, favoris)
   const items = useMemo(() => {

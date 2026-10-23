@@ -10,8 +10,249 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;700&family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet" />
+
+    <!--
+      Écran d'accueil. Volontairement écrit en HTML/CSS inline et sans aucune
+      dépendance : il doit s'afficher AVANT le chargement de JavaScript, des
+      polices et de la feuille de style, sinon l'utilisateur voit d'abord un
+      écran blanc puis le logo — exactement le « flash » qu'on cherche à
+      supprimer. Il est retiré par App.tsx dès que les données sont prêtes.
+    -->
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #ffffff;
+      }
+
+      #splash {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 24px;
+        padding: 24px;
+        text-align: center;
+        background: #ffffff;
+        transition: opacity 0.3s ease;
+      }
+
+      #splash[data-theme='dark'] {
+        background: #1f1f1f;
+      }
+
+      /* Une fois les données reçues, l'écran s'efface puis disparaît du DOM. */
+      #splash.is-done {
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      /* ── Le logo s'assemble pièce par pièce ──
+         Chaque forme du Gmail a son propre délai : les volets se posent avant
+         le « V » central, comme si l'enveloppe se refermait. */
+      .splash-mark {
+        width: 78px;
+        height: 59px;
+        overflow: visible;
+      }
+
+      .splash-mark path {
+        opacity: 0;
+        transform-box: fill-box;
+        transform-origin: center;
+        animation: markIn 0.42s cubic-bezier(0.2, 0, 0, 1) both;
+      }
+
+      .splash-mark path:nth-child(1) {
+        animation-delay: 0.05s;
+      }
+      .splash-mark path:nth-child(2) {
+        animation-delay: 0.12s;
+      }
+      .splash-mark path:nth-child(3) {
+        animation-delay: 0.19s;
+      }
+      .splash-mark path:nth-child(4) {
+        animation-delay: 0.26s;
+      }
+      .splash-mark path:nth-child(5) {
+        animation-delay: 0.33s;
+      }
+
+      @keyframes markIn {
+        from {
+          opacity: 0;
+          transform: scale(0.72);
+        }
+        to {
+          opacity: 1;
+          transform: scale(1);
+        }
+      }
+
+      .splash-word {
+        margin: 0;
+        font-family: 'Google Sans', Roboto, Arial, sans-serif;
+        font-size: 20px;
+        font-weight: 400;
+        letter-spacing: -0.02em;
+        color: #3c4043;
+        opacity: 0;
+        animation: splashRise 0.4s ease-out 0.4s both;
+      }
+
+      #splash[data-theme='dark'] .splash-word {
+        color: #e8eaed;
+      }
+
+      .splash-status {
+        margin: 0;
+        font-family: Roboto, Arial, sans-serif;
+        font-size: 13px;
+        color: #5f6368;
+        opacity: 0;
+        animation: splashRise 0.4s ease-out 0.5s both;
+      }
+
+      #splash[data-theme='dark'] .splash-status {
+        color: #9aa0a6;
+      }
+
+      @keyframes splashRise {
+        from {
+          opacity: 0;
+          transform: translateY(6px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      /* ── Barre de progression indéterminée, façon Material 3 ──
+         On ne connaît pas la durée du chargement IMAP : une barre qui
+         progresserait mentirait. On indique donc qu'un travail est en coursi. */
+      .splash-track {
+        position: relative;
+        width: 180px;
+        height: 3px;
+        overflow: hidden;
+        border-radius: 999px;
+        background: rgba(60, 64, 67, 0.14);
+        opacity: 0;
+        animation: splashRise 0.4s ease-out 0.58s both;
+      }
+
+      #splash[data-theme='dark'] .splash-track {
+        background: rgba(232, 234, 237, 0.16);
+      }
+
+      .splash-track::after {
+        content: '';
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: -45%;
+        width: 45%;
+        border-radius: 999px;
+        background: #0b57d0;
+        animation: splashSlide 1.25s cubic-bezier(0.65, 0, 0.35, 1) infinite 0.6s;
+      }
+
+      #splash[data-theme='dark'] .splash-track::after {
+        background: #a8c7fa;
+      }
+
+      @keyframes splashSlide {
+        0% {
+          left: -45%;
+          width: 45%;
+        }
+        50% {
+          left: 25%;
+          width: 60%;
+        }
+        100% {
+          left: 100%;
+          width: 45%;
+        }
+      }
+
+      /* Accessibilité : sans mouvement, on montre le résultat et rien d'autre. */
+      @media (prefers-reduced-motion: reduce) {
+        .splash-mark path,
+        .splash-word,
+        .splash-status,
+        .splash-track {
+          animation: none;
+          opacity: 1;
+          transform: none;
+        }
+
+        .splash-track::after {
+          animation: none;
+          left: 0;
+          width: 100%;
+          opacity: 0.5;
+        }
+      }
+
+      /* Mobile : on reste lisible sur un petit écran. */
+      @media (max-width: 400px) {
+        .splash-mark {
+          width: 62px;
+          height: 47px;
+        }
+
+        .splash-word {
+          font-size: 18px;
+        }
+
+        .splash-track {
+          width: 148px;
+        }
+      }
+    </style>
   </head>
+
   <body>
+    <div id="splash">
+      <svg class="splash-mark" viewBox="52 42 88 66" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Gmail">
+        <path fill="#4285F4" d="M58 108h14V74L52 59v43c0 3.32 2.69 6 6 6" />
+        <path fill="#34A853" d="M120 108h14c3.32 0 6-2.69 6-6V59l-20 15" />
+        <path fill="#FBBC04" d="M120 48v26l20-15v-8c0-7.42-8.47-11.65-14.4-7.2" />
+        <path fill="#EA4335" d="M72 74V48l24 18 24-18v26L96 92" />
+        <path fill="#C5221F" d="M52 51v8l20 15V48l-5.6-4.2c-5.94-4.45-14.4-.22-14.4 7.2" />
+      </svg>
+
+      <p class="splash-word">Gmail</p>
+      <p class="splash-status">Chargement de vos emails…</p>
+      <div class="splash-track" role="progressbar" aria-label="Chargement des messages"></div>
+    </div>
+
+    <!-- Applique le thème mémorisé AVANT le premier rendu, pour que l'écran
+         de chargement n'apparaisse jamais en blanc à un utilisateur en mode
+         sombre. Repli sur la préférence système. -->
+    <script>
+      (function () {
+        var theme = null;
+        try {
+          theme = window.localStorage.getItem('webmail-theme');
+        } catch (e) {
+          /* localStorage peut être inaccessible (navigation privée stricte). */
+        }
+        if (theme !== 'light' && theme !== 'dark') {
+          theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        }
+        document.getElementById('splash').setAttribute('data-theme', theme);
+        document.documentElement.style.background = theme === 'dark' ? '#1f1f1f' : '#ffffff';
+      })();
+    </script>
+
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
