@@ -291,7 +291,7 @@ export default function RightSidebar() {
                   {notes.map((note) => (
                     <div
                       key={note.id}
-                      className="group relative rounded-xl border border-[#e0e2e7] dark:border-[#303134] p-3 hover:shadow-md transition-all bg-white dark:bg-[#141414]"
+                      className="group relative rounded-xl border border-[#e0e2e7] dark:border-[#303134] p-3 hover:shadow-md transition-shadow bg-white dark:bg-[#141414]"
                     >
                       <h4 className="text-xs font-bold text-[#1f1f1f] dark:text-[#e8eaed] mb-1">
                         {note.title}

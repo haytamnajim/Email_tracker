@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { Folder } from '../types';
+import { useRipple } from '../utils/ripple';
 
 interface SidebarProps {
   folders: Folder[];
@@ -30,8 +31,15 @@ interface SidebarProps {
   starredCount?: number;
 }
 
-/** Durée et courbe d'animation partagées (ouverture / fermeture du sidebar). */
-const ANIM = 'transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] motion-reduce:transition-none';
+/**
+ * Durée et courbe d'animation partagées (ouverture / fermeture du sidebar).
+ * On énumère les propriétés au lieu de `transition-all` : largeur, padding,
+ * largeur maximale, gap, opacité, hauteur maximale et marge sont les seules
+ * qui changent réellement. Tout le reste resterait inutilement promu sur le
+ * thread d'animation.
+ */
+const ANIM =
+  'transition-[width,padding,max-width,gap,opacity,max-height,margin] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] motion-reduce:transition-none';
 
 /**
  * Entrée de navigation en pilule.
@@ -57,13 +65,16 @@ function NavItem({
   title?: string;
   collapsed: boolean;
 }) {
+  const ripple = useRipple();
+
   return (
     <button
       type="button"
       onClick={onClick}
+      onPointerDown={ripple}
       title={title ?? label}
       aria-current={active ? 'page' : undefined}
-      className={`group relative flex h-9 w-full cursor-pointer items-center rounded-full text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[#0b57d0] ${ANIM} ${
+      className={`ripple-host group relative flex h-9 w-full cursor-pointer items-center rounded-full text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[#0b57d0] ${ANIM} ${
         active
           ? 'bg-[#d3e3fd] text-[#001d35] font-medium shadow-[0_1px_2px_rgba(60,64,67,0.10)] dark:bg-[#004a77] dark:text-[#d3e3fd]'
           : 'text-[#444746] dark:text-[#c4c7c5] hover:bg-[#eaebef] hover:shadow-[0_1px_2px_rgba(60,64,67,0.08)] dark:hover:bg-[#282a2c]'
@@ -347,7 +358,7 @@ export default function Sidebar({
             onClick={onRefresh}
             disabled={refreshing}
             title="Synchroniser IMAP"
-            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[#5f6368] transition-all hover:bg-black/5 hover:text-[#0b57d0] disabled:opacity-50 dark:text-[#9aa0a6] dark:hover:bg-white/10 dark:hover:text-[#a8c7fa]"
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[#5f6368] transition-[background-color,color] hover:bg-black/5 hover:text-[#0b57d0] disabled:opacity-50 dark:text-[#9aa0a6] dark:hover:bg-white/10 dark:hover:text-[#a8c7fa]"
           >
             <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />
           </button>

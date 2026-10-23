@@ -1,5 +1,6 @@
 ﻿import { toneBackground, toneInk } from '../utils/colors';
 import type { Tone } from '../utils/colors';
+import { useRipple } from '../utils/ripple';
 
 export interface MessageFilters {
   unread: boolean;
@@ -25,6 +26,8 @@ const TOGGLES: Array<{
 
 /** Filtres (non lus, favoris, pièces jointes) et tri par date — chips Material 3. */
 export default function FilterBar({ filters, onChange }: FilterBarProps) {
+  const ripple = useRipple();
+
   return (
     <div className="flex min-w-0 flex-wrap items-center gap-2" role="group" aria-label="Filtres">
       {TOGGLES.map(({ key, label, tone }) => {
@@ -34,8 +37,9 @@ export default function FilterBar({ filters, onChange }: FilterBarProps) {
             key={key}
             type="button"
             onClick={() => onChange({ ...filters, [key]: !active })}
+            onPointerDown={ripple}
             aria-pressed={active}
-            className="h-8 shrink-0 rounded-lg border px-3 text-[13px] font-medium transition-colors"
+            className="ripple-host h-8 shrink-0 rounded-lg border px-3 text-[13px] font-medium transition-colors"
             style={{
               background: active ? toneBackground(tone) : 'transparent',
               borderColor: active ? 'transparent' : 'var(--line-strong)',

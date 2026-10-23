@@ -192,10 +192,11 @@ export default function MessageList({
       )}
 
       <div role="feed" aria-label="Messages" className="divide-y divide-transparent">
-        {items.map((message) => (
+        {items.map((message, index) => (
           <MessageItem
             key={message.uid}
             message={message}
+            index={index}
             selected={checkedUids.has(message.uid)}
             active={message.uid === selectedUid}
             onSelect={onSelect}

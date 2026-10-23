@@ -116,7 +116,7 @@ export default function Header({
           onClick={onToggleNav}
           aria-label={navOpen ? 'Réduire le volet' : 'Développer le volet'}
           title="Menu principal"
-          className="flex h-11 w-11 items-center justify-center rounded-full text-[#444746] dark:text-[#c4c7c5] hover:bg-[#e9eef6] dark:hover:bg-[#2b2d30] transition-colors"
+          className="flex h-11 w-11 items-center justify-center rounded-full text-[#444746] dark:text-[#c4c7c5] hover:bg-[#e9eef6] dark:hover:bg-[#2b2d30] active:scale-[0.95] transition-[background-color,transform]"
         >
           <Menu className="h-5 w-5" />
         </button>
@@ -129,7 +129,7 @@ export default function Header({
       {/* ── Centre : Barre de recherche Gmail officielle ── */}
       <div className="relative flex-1 max-w-[720px] mx-4">
         <div
-          className={`relative flex h-12 items-center rounded-full transition-all duration-200 ${
+          className={`relative flex h-12 items-center rounded-full transition-[background-color,box-shadow] duration-200 ${
             searchFocused || filterOpen
               ? 'bg-white dark:bg-[#141414] shadow-md ring-1 ring-black/5 dark:ring-white/10'
               : 'bg-[#eaf1fb] dark:bg-[#2a2b2e] hover:bg-[#dfe7f2] dark:hover:bg-[#34373b] hover:shadow-sm'
@@ -273,7 +273,7 @@ export default function Header({
             onClick={() => setHelpOpen((prev) => !prev)}
             aria-label="Aide et assistance"
             title="Aide"
-            className="flex h-10 w-10 items-center justify-center rounded-full text-[#444746] dark:text-[#c4c7c5] hover:bg-[#e9eef6] dark:hover:bg-[#2b2d30] transition-colors"
+            className="flex h-10 w-10 items-center justify-center rounded-full text-[#444746] dark:text-[#c4c7c5] hover:bg-[#e9eef6] dark:hover:bg-[#2b2d30] active:scale-[0.95] transition-[background-color,transform]"
           >
             <CircleHelp className="h-5 w-5" />
           </button>
@@ -309,7 +309,7 @@ export default function Header({
           onClick={onOpenSettings}
           aria-label="Paramètres"
           title="Paramètres rapides"
-          className="flex h-10 w-10 items-center justify-center rounded-full text-[#444746] dark:text-[#c4c7c5] hover:bg-[#e9eef6] dark:hover:bg-[#2b2d30] transition-colors"
+          className="flex h-10 w-10 items-center justify-center rounded-full text-[#444746] dark:text-[#c4c7c5] hover:bg-[#e9eef6] dark:hover:bg-[#2b2d30] active:scale-[0.95] transition-[background-color,transform]"
         >
           <Settings className="h-5 w-5" />
         </button>
@@ -320,7 +320,7 @@ export default function Header({
           onClick={onToggleTheme}
           aria-label={theme === 'dark' ? 'Passer en thème clair' : 'Passer en thème sombre'}
           title={theme === 'dark' ? 'Thème clair' : 'Thème sombre'}
-          className="flex h-10 w-10 items-center justify-center rounded-full text-[#444746] dark:text-[#c4c7c5] hover:bg-[#e9eef6] dark:hover:bg-[#2b2d30] transition-colors"
+          className="flex h-10 w-10 items-center justify-center rounded-full text-[#444746] dark:text-[#c4c7c5] hover:bg-[#e9eef6] dark:hover:bg-[#2b2d30] active:scale-[0.95] transition-[background-color,transform]"
         >
           {theme === 'dark' ? <Sun className="h-5 w-5 text-amber-400" /> : <Moon className="h-5 w-5" />}
         </button>
@@ -332,7 +332,7 @@ export default function Header({
             onClick={() => setAppsOpen((prev) => !prev)}
             aria-label="Applications Google"
             title="Applications Google"
-            className="flex h-10 w-10 items-center justify-center rounded-full text-[#444746] dark:text-[#c4c7c5] hover:bg-[#e9eef6] dark:hover:bg-[#2b2d30] transition-colors"
+            className="flex h-10 w-10 items-center justify-center rounded-full text-[#444746] dark:text-[#c4c7c5] hover:bg-[#e9eef6] dark:hover:bg-[#2b2d30] active:scale-[0.95] transition-[background-color,transform]"
           >
             <Grid className="h-5 w-5" />
           </button>
@@ -378,7 +378,7 @@ export default function Header({
             onClick={() => setAccountOpen((prev) => !prev)}
             aria-label="Compte Google"
             title="Compte Google"
-            className="flex h-10 w-10 items-center justify-center rounded-full hover:ring-4 hover:ring-black/5 dark:hover:ring-white/10 transition-all"
+            className="flex h-10 w-10 items-center justify-center rounded-full hover:ring-4 hover:ring-black/5 dark:hover:ring-white/10 transition-[background-color,box-shadow]"
           >
             <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-[#0b57d0] to-[#1a73e8] text-white text-xs font-semibold shadow-sm">
               H

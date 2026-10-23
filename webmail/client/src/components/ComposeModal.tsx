@@ -69,7 +69,7 @@ export default function ComposeModal({
 
   return (
     <div
-      className={`fixed z-50 animate-compose-in rounded-t-2xl shadow-2xl border border-[#dadce0] dark:border-[#444746] bg-white dark:bg-[#202124] transition-all duration-200 select-text flex flex-col ${
+      className={`fixed z-50 animate-compose-in rounded-t-2xl shadow-2xl border border-[#dadce0] dark:border-[#444746] bg-white dark:bg-[#202124] transition-shadow duration-200 select-text flex flex-col ${
         isMinimized
           ? 'bottom-0 right-16 w-72 h-11'
           : isMaximized

@@ -200,7 +200,7 @@ export default function N8nReplyModal({
                   key={opt.id}
                   type="button"
                   onClick={() => setTone(opt.id)}
-                  className={`flex flex-col items-center gap-1 p-2 rounded-xl border text-center transition-all ${
+                  className={`flex flex-col items-center gap-1 p-2 rounded-xl border text-center transition-[background-color,border-color] ${
                     tone === opt.id
                       ? 'border-[#0b57d0] bg-[#eaf1fb] text-[#0b57d0] dark:border-[#a8c7fa] dark:bg-[#004a77]/30 dark:text-[#a8c7fa] font-semibold'
                       : 'border-[#dadce0] dark:border-[#444746] text-[#444746] dark:text-[#c4c7c5] hover:bg-[#f8f9fa] dark:hover:bg-[#282a2d]'

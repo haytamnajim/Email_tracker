@@ -16,8 +16,18 @@ import { formatAddress, formatRelativeDate } from '../utils/format';
 
 export type DisplayDensity = 'default' | 'comfortable' | 'compact';
 
+/**
+ * Cascade d'apparition : 20 ms entre deux lignes.
+ * `STAGGER_MAX` plafonne le décalage — sans lui, la 50ᵉ ligne attendrait une
+ * seconde entière à chaque chargement infini, ce qui ferait « traîner » l'app.
+ */
+const STAGGER_STEP = 20;
+const STAGGER_MAX = 12;
+
 interface MessageItemProps {
   message: MessageSummary;
+  /** Position dans la liste, pour décaler l'animation d'entrée. */
+  index: number;
   selected: boolean;
   active: boolean;
   onSelect: (uid: number) => void;
@@ -35,6 +45,7 @@ interface MessageItemProps {
 
 export default function MessageItem({
   message,
+  index,
   selected,
   active,
   onSelect,
@@ -76,14 +87,16 @@ export default function MessageItem({
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       onClick={() => onSelect(message.uid)}
-      className={`group relative flex items-center border-b border-[#e0e2e7] dark:border-[#303134] px-4 cursor-pointer select-none transition-colors ${densityClass} ${
+      // Décalage proportionnel à la position → la liste se remplit en cascade.
+      style={{ animationDelay: `${Math.min(index, STAGGER_MAX) * STAGGER_STEP}ms` }}
+      className={`group relative flex items-center border-b border-[#e0e2e7] dark:border-[#303134] px-4 cursor-pointer select-none animate-row-in hover:z-10 transition-[background-color,box-shadow] ${densityClass} ${
         selected
           ? 'bg-[#c2dbfe] dark:bg-[#004a77] text-[#001d35] dark:text-[#e8eaed]'
           : active
           ? 'bg-[#d3e3fd]/60 dark:bg-[#004a77]/60'
           : unread
           ? 'bg-white dark:bg-[#141414] font-semibold hover:shadow-[inset_1px_0_0_#dadce0,inset_-1px_0_0_#dadce0,0_1px_2px_0_rgba(60,64,67,.3),0_1px_3px_1px_rgba(60,64,67,.15)] z-10'
-          : 'bg-[#f2f6fc]/60 dark:bg-[#1c1d1f] text-[#444746] dark:text-[#c4c7c5] hover:bg-[#eaf1fb] dark:hover:bg-[#282a2c]'
+          : 'bg-[#f2f6fc]/60 dark:bg-[#1c1d1f] text-[#444746] dark:text-[#c4c7c5] hover:bg-[#eaf1fb] dark:hover:bg-[#282a2c] hover:shadow-[0_1px_3px_0_rgba(60,64,67,.16),0_1px_2px_1px_rgba(60,64,67,.10)] dark:hover:shadow-[0_1px_3px_0_rgba(0,0,0,.55)]'
       }`}
     >
       {/* ── Gauche : Checkbox + Étoile + Important ── */}

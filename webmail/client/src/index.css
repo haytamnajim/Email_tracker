@@ -317,6 +317,109 @@ body {
   animation: shimmer 1.4s ease-in-out infinite;
 }
 
+/* ── Onde de clic façon Material Design ──
+   L'hôte doit couper le débordement pour que l'onde soit tronquée aux bords. */
+.ripple-host {
+  position: relative;
+  overflow: hidden;
+}
+
+.ripple-wave {
+  position: absolute;
+  border-radius: 9999px;
+  pointer-events: none;
+  background: currentColor;
+  opacity: 0.18;
+  transform: scale(0);
+  animation: ripple 0.48s cubic-bezier(0.2, 0, 0, 1) forwards;
+}
+
+@keyframes ripple {
+  to {
+    transform: scale(1);
+    opacity: 0;
+  }
+}
+
+/* ── Cascade des lignes ──
+   `backwards` maintient la ligne invisible pendant son délai, sinon elle
+   clignoterait à l'écran entre le montage et le début de l'animation. */
+@keyframes rowIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-row-in {
+  animation: rowIn 0.26s cubic-bezier(0.2, 0, 0, 1) backwards;
+}
+
+/* ── Fondu de sortie : évite le « coup sec » quand le contenu remplace les squelettes ── */
+@keyframes fadeOut {
+  to {
+    opacity: 0;
+    transform: scale(0.995);
+  }
+}
+
+.animate-fade-out {
+  animation: fadeOut 0.16s ease-out forwards;
+}
+
+/* ── Tiroir latéral ──
+   Glisse depuis la droite : un panneau ancré à droite doit entrer par la
+   droite, pas remonter du bas (translateY), quel que soit son contenu. */
+@keyframes drawerIn {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+.animate-drawer-in {
+  animation: drawerIn 0.26s cubic-bezier(0.2, 0, 0, 1) both;
+}
+
+/* Voile derrière un tiroir : sépare visuellement et attrape les clics. */
+@keyframes scrimIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.animate-scrim-in {
+  animation: scrimIn 0.2s ease-out both;
+}
+
+/* ── Dialogue centré ──
+   Le voile et le panneau s'animent séparément : le voile fond, le panneau
+   apparaît en échelle. Une seule animation sur les deux donnerait une
+   impression de « tremblement » au montage. */
+@keyframes modalIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-modal-in {
+  animation: modalIn 0.2s cubic-bezier(0.2, 0, 0, 1) both;
+}
+
 /* ── Accessibilité : anneau de focus visible, façon Material ── */
 :where(button, a, input, select, textarea, [tabindex]):focus-visible {
   outline: 2px solid var(--accent);

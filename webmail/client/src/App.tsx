@@ -378,15 +378,18 @@ export default function App() {
         else if (settingsOpen) setSettingsOpen(false);
         else if (shortcutsOpen) setShortcutsOpen(false);
         else if (selectedUid !== null && splitView === 'none') setSelectedUid(null);
-      } else if (e.key === 's' && selectedUid !== null) {
+      } else if (
+        (e.key === 's' || e.key === 'e' || e.key === '#') &&
+        selectedUid !== null
+      ) {
+        // Une fenêtre ouverte neutralise les raccourcis d'action. Sans cette
+        // garde, « e » archiverait et « # » supprimerait le message sélectionné
+        // pendant que l'utilisateur lit l'aide ou règle un paramètre.
+        if (composeOpen || settingsOpen || shortcutsOpen) return;
         e.preventDefault();
-        handleToggleStar(selectedUid);
-      } else if (e.key === 'e' && selectedUid !== null) {
-        e.preventDefault();
-        handleArchive(selectedUid);
-      } else if (e.key === '#' && selectedUid !== null) {
-        e.preventDefault();
-        handleDelete(selectedUid);
+        if (e.key === 's') handleToggleStar(selectedUid);
+        else if (e.key === 'e') handleArchive(selectedUid);
+        else handleDelete(selectedUid);
       }
     }
 

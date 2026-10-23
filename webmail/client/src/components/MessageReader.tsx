@@ -43,7 +43,7 @@ interface MessageReaderProps {
   onDelete?: (uid: number) => void;
   onToggleStar?: (uid: number) => void;
   isStarred?: boolean;
-  onSendReply?: (to: string, subject: string, body: string) => void;
+  onSendReply?: (to: string, subject: string, body: string, uid?: number) => Promise<boolean | void> | void;
 }
 
 const FRAME_COLORS: Record<Theme, { bg: string; ink: string; muted: string; quote: string }> = {
@@ -199,15 +199,25 @@ export default function MessageReader({
   const recipients = formatAddressList(message.to);
   const cc = formatAddressList(message.cc);
 
-  const handleSendInlineReply = () => {
+  const handleSendInlineReply = async () => {
     if (!replyText.trim()) return;
     setReplySending(true);
-    setTimeout(() => {
-      onSendReply?.(senderAddress, `Re: ${message.subject}`, replyText);
+    setGenerationError(null);
+    try {
+      const targetSubject = message.subject?.toLowerCase().startsWith('re:')
+        ? message.subject
+        : `Re: ${message.subject || '(sans objet)'}`;
+      const res = await onSendReply?.(senderAddress, targetSubject, replyText, message.uid);
+      if (res !== false) {
+        setReplyMode(null);
+        setReplyText('');
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setGenerationError(msg);
+    } finally {
       setReplySending(false);
-      setReplyMode(null);
-      setReplyText('');
-    }, 600);
+    }
   };
 
   return (
@@ -465,7 +475,7 @@ export default function MessageReader({
               return (
                 <div
                   key={att.index}
-                  className="group flex items-center justify-between rounded-xl border border-[#dadce0] dark:border-[#444746] bg-[#f8f9fa] dark:bg-[#202124] p-3 hover:shadow-md transition-all"
+                  className="group flex items-center justify-between rounded-xl border border-[#dadce0] dark:border-[#444746] bg-[#f8f9fa] dark:bg-[#202124] p-3 hover:shadow-md transition-shadow"
                 >
                   <div className="flex items-center gap-3 min-w-0">
                     <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white dark:bg-[#141414] shadow-xs text-[#0b57d0] dark:text-[#a8c7fa]">
