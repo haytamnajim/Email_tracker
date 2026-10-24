@@ -23,9 +23,11 @@ import {
   ChevronDown,
   ChevronUp,
   Sparkles,
+  CalendarPlus,
+  CalendarCheck,
 } from 'lucide-react';
 import type { MessageDetail, Theme } from '../types';
-import { attachmentUrl, generateReplyWithN8n, cancelReplyWithN8n } from '../api';
+import { attachmentUrl, generateReplyWithN8n, cancelReplyWithN8n, summarizeEmailWithN8n, detectMeetingWithAI } from '../api';
 import { containsRemoteImages, sanitizeEmailHtml } from '../utils/html';
 import { formatAddressList, formatBytes, formatFullDate } from '../utils/format';
 import { senderGradient, senderInitials } from '../utils/colors';
@@ -45,6 +47,7 @@ interface MessageReaderProps {
   isStarred?: boolean;
   onSendReply?: (to: string, subject: string, body: string, uid?: number) => Promise<boolean | void> | void;
   onCancelReply?: () => void;
+  onCancelSummary?: () => void;
 }
 
 const FRAME_COLORS: Record<Theme, { bg: string; ink: string; muted: string; quote: string }> = {
@@ -101,6 +104,7 @@ export default function MessageReader({
   isStarred = false,
   onSendReply,
   onCancelReply,
+  onCancelSummary,
 }: MessageReaderProps) {
   const [allowRemoteImages, setAllowRemoteImages] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -110,6 +114,25 @@ export default function MessageReader({
   const [isGeneratingReply, setIsGeneratingReply] = useState(false);
   const [generationError, setGenerationError] = useState<string | null>(null);
 
+  // États pour le résumé par l'IA
+  const [summaryOpen, setSummaryOpen] = useState(false);
+  const [summaryText, setSummaryText] = useState<string | null>(null);
+  const [isSummarizing, setIsSummarizing] = useState(false);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
+
+  // États pour la détection de réunion par IA
+  const [meetingModalOpen, setMeetingModalOpen] = useState(false);
+  const [meetingConfirmed, setMeetingConfirmed] = useState(false);
+  const [meetingDate, setMeetingDate] = useState('');
+  const [meetingTime, setMeetingTime] = useState('10:00');
+  const [meetingDuration, setMeetingDuration] = useState('60');
+  const [meetingTitle, setMeetingTitle] = useState('');
+  const [meetingDetected, setMeetingDetected] = useState(false);
+  const [meetingConfidence, setMeetingConfidence] = useState(0);
+  const [meetingSource, setMeetingSource] = useState<'n8n' | 'fallback'>('fallback');
+  const [meetingReason, setMeetingReason] = useState('');
+  const [isDetectingMeeting, setIsDetectingMeeting] = useState(false);
+
   useEffect(() => {
     setAllowRemoteImages(false);
     setReplyMode(null);
@@ -117,7 +140,100 @@ export default function MessageReader({
     setDetailsOpen(false);
     setIsGeneratingReply(false);
     setGenerationError(null);
+    setSummaryOpen(false);
+    setSummaryText(null);
+    setIsSummarizing(false);
+    setSummaryError(null);
+    setMeetingModalOpen(false);
+    setMeetingConfirmed(false);
+    setMeetingDate('');
+    setMeetingTime('10:00');
+    setMeetingDuration('60');
+    setMeetingTitle(message?.subject ?? '');
   }, [message?.uid]);
+
+  /** Appel IA dès qu'un email est chargé pour détecter s'il contient une réunion */
+  useEffect(() => {
+    if (!message) return;
+    let cancelled = false;
+    setIsDetectingMeeting(true);
+    setMeetingDetected(false);
+    setMeetingSource('fallback');
+    setMeetingReason('');
+    setMeetingConfidence(0);
+
+    const storedWebhook = localStorage.getItem('n8n_detect_meeting_webhook_url') || undefined;
+
+    detectMeetingWithAI({
+      webhookUrl: storedWebhook,
+      message: {
+        uid: message.uid,
+        from: message.from,
+        subject: message.subject,
+        date: message.date,
+        text: message.text,
+        html: message.html,
+      },
+    }).then((res) => {
+      if (cancelled) return;
+      setMeetingDetected(res.isMeeting);
+      setMeetingConfidence(res.confidence);
+      setMeetingSource(res.source);
+      setMeetingReason(res.reason);
+      if (res.isMeeting && res.suggestedTitle) {
+        setMeetingTitle(res.suggestedTitle);
+      }
+    }).finally(() => {
+      if (!cancelled) setIsDetectingMeeting(false);
+    });
+
+    return () => { cancelled = true; };
+  }, [message?.uid]);
+
+
+  const handleSummarize = async () => {
+    if (!message) return;
+    setSummaryOpen(true);
+    if (summaryText) return; // Déjà chargé
+
+    setIsSummarizing(true);
+    setSummaryError(null);
+    try {
+      const storedWebhook = localStorage.getItem('n8n_reply_webhook_url') || undefined;
+      const res = await summarizeEmailWithN8n(
+        {
+          uid: message.uid,
+          from: message.from,
+          to: message.to,
+          subject: message.subject,
+          date: message.date,
+          text: message.text,
+          html: message.html,
+        },
+        storedWebhook,
+      );
+
+      if (res.summary) {
+        setSummaryText(res.summary);
+      }
+      if (!res.success && res.error) {
+        setSummaryError(res.error);
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setSummaryError(msg);
+    } finally {
+      setIsSummarizing(false);
+    }
+  };
+
+  const handleCancelSummarize = () => {
+    cancelReplyWithN8n(message?.uid);
+    setSummaryOpen(false);
+    setIsSummarizing(false);
+    setSummaryError(null);
+    onCancelSummary?.();
+  };
 
   const handleDirectGenerateReply = async () => {
     if (!message) return;
@@ -318,6 +434,22 @@ export default function MessageReader({
         </div>
 
         <div className="flex items-center gap-1">
+          {/* Bouton Résumer avec l'IA façon Google Gemini */}
+          <button
+            type="button"
+            onClick={handleSummarize}
+            disabled={isSummarizing}
+            title="Résumer cet email avec l'IA"
+            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-all ${
+              summaryOpen
+                ? 'bg-[#d3e3fd] text-[#0b57d0] dark:bg-[#004a77]/50 dark:text-[#a8c7fa]'
+                : 'text-[#0b57d0] dark:text-[#a8c7fa] bg-[#eaf1fb] dark:bg-[#004a77]/25 hover:bg-[#d3e3fd] dark:hover:bg-[#004a77]/40'
+            }`}
+          >
+            <Sparkles className={`h-3.5 w-3.5 ${isSummarizing ? 'animate-spin' : ''}`} />
+            <span>{isSummarizing ? 'Analyse…' : 'Résumer'}</span>
+          </button>
+
           <button
             type="button"
             onClick={handleDirectGenerateReply}
@@ -338,6 +470,243 @@ export default function MessageReader({
           </button>
         </div>
       </div>
+
+      {/* ── Bandeau Détection de Réunion par IA ── */}
+      {(isDetectingMeeting || meetingDetected) && (
+        <div className={`mx-6 mt-3 rounded-2xl border px-4 py-3 flex items-center justify-between gap-3 transition-all ${
+          isDetectingMeeting
+            ? 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/30'
+            : meetingConfirmed
+            ? 'border-emerald-300 dark:border-emerald-700 bg-gradient-to-r from-emerald-50 to-green-50 dark:from-emerald-950/40 dark:to-green-950/30'
+            : 'border-amber-300 dark:border-amber-700 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/40 dark:to-orange-950/30'
+        }`}>
+          <div className="flex items-center gap-3 min-w-0">
+            <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${
+              isDetectingMeeting ? 'bg-slate-400 text-white' : meetingConfirmed ? 'bg-emerald-500 text-white' : 'bg-amber-500 text-white'
+            }`}>
+              {isDetectingMeeting
+                ? <Sparkles className="h-4 w-4 animate-spin" />
+                : meetingConfirmed
+                ? <CalendarCheck className="h-4 w-4" />
+                : <CalendarPlus className="h-4 w-4" />}
+            </div>
+            <div className="min-w-0">
+              {isDetectingMeeting ? (
+                <>
+                  <p className="text-xs font-bold text-slate-500 dark:text-slate-400">🤖 Analyse IA en cours…</p>
+                  <p className="text-[11px] text-[#5f6368] dark:text-[#9aa0a6]">L'IA vérifie si cet email contient une demande de réunion.</p>
+                </>
+              ) : meetingConfirmed ? (
+                <>
+                  <p className="text-xs font-bold text-emerald-700 dark:text-emerald-300">✅ Rendez-vous confirmé !</p>
+                  <p className="text-[11px] text-[#5f6368] dark:text-[#9aa0a6] truncate">{meetingTitle} · {meetingDate} à {meetingTime}</p>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-center gap-2">
+                    <p className="text-xs font-bold text-amber-700 dark:text-amber-300">📅 Réunion détectée par l'IA</p>
+                    <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
+                      meetingSource === 'n8n'
+                        ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300'
+                        : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
+                    }`}>
+                      {meetingSource === 'n8n' ? `🤖 IA · ${Math.round(meetingConfidence * 100)}%` : '🔍 Local'}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-[#5f6368] dark:text-[#9aa0a6] truncate" title={meetingReason}>{meetingReason || 'Cliquez pour planifier le rendez-vous.'}</p>
+                </>
+              )}
+            </div>
+          </div>
+          {!isDetectingMeeting && (
+            !meetingConfirmed ? (
+              <button
+                type="button"
+                id="meeting-confirm-btn"
+                onClick={() => {
+                  setMeetingTitle(message?.subject ?? '');
+                  setMeetingModalOpen(true);
+                }}
+                className="shrink-0 inline-flex items-center gap-2 rounded-full bg-amber-500 hover:bg-amber-600 text-white px-4 py-1.5 text-xs font-semibold transition-colors shadow-sm"
+              >
+                <CalendarPlus className="h-3.5 w-3.5" />
+                Confirmer le RDV
+              </button>
+            ) : (
+              <a
+                href={`https://calendar.google.com/calendar/r/eventnew?text=${encodeURIComponent(meetingTitle)}&dates=${meetingDate.replace(/-/g, '')}T${meetingTime.replace(':', '')}00/${meetingDate.replace(/-/g, '')}T${String(parseInt(meetingTime.split(':')[0]) + Math.floor(parseInt(meetingDuration)/60)).padStart(2,'0')}${meetingTime.split(':')[1]}00&details=${encodeURIComponent('Réunion depuis votre Webmail')}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="shrink-0 inline-flex items-center gap-2 rounded-full bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-1.5 text-xs font-semibold transition-colors shadow-sm"
+              >
+                <CalendarCheck className="h-3.5 w-3.5" />
+                Voir dans Calendar
+              </a>
+            )
+          )}
+        </div>
+      )}
+
+      {/* ── Modal de confirmation de réunion ── */}
+      {meetingModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm animate-fade-slide"
+          onClick={(e) => { if (e.target === e.currentTarget) setMeetingModalOpen(false); }}
+        >
+          <div className="relative w-full max-w-sm mx-4 rounded-2xl bg-white dark:bg-[#1f1f1f] shadow-2xl border border-[#dadce0] dark:border-[#444746] overflow-hidden">
+            {/* En-tête */}
+            <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-[#e0e2e7] dark:border-[#3c4043]">
+              <div className="flex items-center gap-2">
+                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-amber-500 text-white">
+                  <CalendarPlus className="h-4 w-4" />
+                </div>
+                <span className="text-sm font-bold text-[#1f1f1f] dark:text-[#e8eaed]">Confirmer le rendez-vous</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMeetingModalOpen(false)}
+                className="flex h-7 w-7 items-center justify-center rounded-full text-[#5f6368] hover:bg-black/5 dark:hover:bg-white/10"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* Formulaire */}
+            <div className="px-5 py-4 space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-[#444746] dark:text-[#c4c7c5] mb-1">Titre du rendez-vous</label>
+                <input
+                  type="text"
+                  value={meetingTitle}
+                  onChange={(e) => setMeetingTitle(e.target.value)}
+                  placeholder="Ex: Appel avec client"
+                  className="w-full rounded-xl border border-[#dadce0] dark:border-[#444746] bg-[#f8f9fa] dark:bg-[#141414] px-3 py-2 text-sm text-[#1f1f1f] dark:text-[#e8eaed] outline-none focus:border-[#0b57d0] dark:focus:border-[#a8c7fa] transition-colors"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-[#444746] dark:text-[#c4c7c5] mb-1">Date</label>
+                  <input
+                    type="date"
+                    value={meetingDate}
+                    onChange={(e) => setMeetingDate(e.target.value)}
+                    min={new Date().toISOString().split('T')[0]}
+                    className="w-full rounded-xl border border-[#dadce0] dark:border-[#444746] bg-[#f8f9fa] dark:bg-[#141414] px-3 py-2 text-sm text-[#1f1f1f] dark:text-[#e8eaed] outline-none focus:border-[#0b57d0] dark:focus:border-[#a8c7fa] transition-colors"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-[#444746] dark:text-[#c4c7c5] mb-1">Heure</label>
+                  <input
+                    type="time"
+                    value={meetingTime}
+                    onChange={(e) => setMeetingTime(e.target.value)}
+                    className="w-full rounded-xl border border-[#dadce0] dark:border-[#444746] bg-[#f8f9fa] dark:bg-[#141414] px-3 py-2 text-sm text-[#1f1f1f] dark:text-[#e8eaed] outline-none focus:border-[#0b57d0] dark:focus:border-[#a8c7fa] transition-colors"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-[#444746] dark:text-[#c4c7c5] mb-1">Durée</label>
+                <select
+                  value={meetingDuration}
+                  onChange={(e) => setMeetingDuration(e.target.value)}
+                  className="w-full rounded-xl border border-[#dadce0] dark:border-[#444746] bg-[#f8f9fa] dark:bg-[#141414] px-3 py-2 text-sm text-[#1f1f1f] dark:text-[#e8eaed] outline-none focus:border-[#0b57d0] dark:focus:border-[#a8c7fa] transition-colors"
+                >
+                  <option value="15">15 minutes</option>
+                  <option value="30">30 minutes</option>
+                  <option value="45">45 minutes</option>
+                  <option value="60">1 heure</option>
+                  <option value="90">1h30</option>
+                  <option value="120">2 heures</option>
+                </select>
+              </div>
+              <div className="rounded-xl bg-[#eaf1fb] dark:bg-[#004a77]/20 border border-[#d3e3fd] dark:border-[#004a77]/40 px-3 py-2 text-xs text-[#0b57d0] dark:text-[#a8c7fa]">
+                <span className="font-semibold">👤 Avec :</span> {message?.from?.name ?? message?.from?.address}
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center gap-2 px-5 pb-5">
+              <button
+                type="button"
+                id="meeting-confirm-submit"
+                disabled={!meetingDate || !meetingTitle.trim()}
+                onClick={() => {
+                  setMeetingConfirmed(true);
+                  setMeetingModalOpen(false);
+                }}
+                className="flex-1 inline-flex items-center justify-center gap-2 rounded-full bg-[#0b57d0] hover:bg-[#0842a0] text-white px-4 py-2.5 text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <CalendarCheck className="h-4 w-4" />
+                Confirmer le rendez-vous
+              </button>
+              <button
+                type="button"
+                onClick={() => setMeetingModalOpen(false)}
+                className="rounded-full border border-[#dadce0] dark:border-[#444746] px-4 py-2.5 text-sm font-medium text-[#444746] dark:text-[#c4c7c5] hover:bg-[#f1f3f4] dark:hover:bg-[#282a2c] transition-colors"
+              >
+                Annuler
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Bandeau / Carte Résumé IA Google Workspace ── */}
+      {summaryOpen && (
+        <div className="mx-6 mt-3 rounded-2xl border border-blue-200/80 dark:border-blue-900/50 bg-gradient-to-br from-blue-50/80 via-white to-purple-50/40 dark:from-[#131b2e] dark:via-[#1c222e] dark:to-[#1a1c29] p-4 shadow-sm animate-fade-slide">
+          <div className="flex items-center justify-between pb-2 mb-2 border-b border-blue-100 dark:border-blue-900/40">
+            <div className="flex items-center gap-2">
+              <div className="flex h-6 w-6 items-center justify-center rounded-md bg-[#0b57d0] text-white">
+                <Sparkles className="h-3.5 w-3.5" />
+              </div>
+              <span className="text-xs font-bold text-[#0b57d0] dark:text-[#a8c7fa] tracking-wide uppercase">
+                Points clés du message (IA)
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={handleCancelSummarize}
+                title="Annuler et fermer le résumé"
+                className="flex items-center gap-1 text-[11px] text-[#5f6368] dark:text-[#9aa0a6] hover:text-red-600 dark:hover:text-red-400 px-2 py-0.5 rounded-md hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+              >
+                <span>Annuler</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleCancelSummarize}
+                className="flex h-6 w-6 items-center justify-center rounded-full text-[#5f6368] dark:text-[#9aa0a6] hover:bg-black/5 dark:hover:bg-white/10"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
+
+          {isSummarizing ? (
+            <div className="flex items-center justify-between py-2">
+              <div className="flex items-center gap-3 text-xs text-[#0b57d0] dark:text-[#a8c7fa]">
+                <Sparkles className="h-4 w-4 animate-spin shrink-0" />
+                <span>Génération du résumé en 3 points par l'agent IA...</span>
+              </div>
+              <button
+                type="button"
+                onClick={handleCancelSummarize}
+                className="text-xs text-[#5f6368] dark:text-[#9aa0a6] hover:underline"
+              >
+                Arrêter
+              </button>
+            </div>
+          ) : summaryError ? (
+            <div className="text-xs text-red-600 dark:text-red-300 py-1">
+              {summaryError}
+            </div>
+          ) : summaryText ? (
+            <div className="space-y-1.5 text-xs text-[#1f1f1f] dark:text-[#e8eaed] leading-relaxed whitespace-pre-wrap">
+              {summaryText}
+            </div>
+          ) : null}
+        </div>
+      )}
 
       {/* ── Titre / Objet du message ── */}
       <div className="px-6 pt-5 pb-3 flex items-start justify-between gap-4">

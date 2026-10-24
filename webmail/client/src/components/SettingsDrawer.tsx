@@ -1,4 +1,4 @@
-import { X, Check, Rows3, Palette, PanelLeft, Workflow } from 'lucide-react';
+import { X, Check, Rows3, Palette, PanelLeft, Workflow, Send, Bell } from 'lucide-react';
 import type { DisplayDensity } from './MessageItem';
 import type { SplitViewMode } from './TopToolbar';
 import type { Theme } from '../types';
@@ -14,6 +14,12 @@ interface SettingsDrawerProps {
   onChangeTheme: (theme: Theme) => void;
   splitView: SplitViewMode;
   onChangeSplitView: (mode: SplitViewMode) => void;
+  // SMTP / Notifications
+  smtpAvailable: boolean;
+  smtpWorking: boolean;
+  notificationEnabled: boolean;
+  notificationPermission: NotificationPermission;
+  onEnableNotifications: () => void;
 }
 
 /** Cascade entre les sections du tiroir, comme pour les lignes de la liste. */
@@ -120,6 +126,11 @@ export default function SettingsDrawer({
   onChangeTheme,
   splitView,
   onChangeSplitView,
+  smtpAvailable,
+  smtpWorking,
+  notificationEnabled,
+  notificationPermission,
+  onEnableNotifications,
 }: SettingsDrawerProps) {
   const ripple = useRipple();
 
@@ -282,6 +293,80 @@ export default function SettingsDrawer({
                   </button>
                 );
               })}
+            </div>
+          </section>
+
+          {/* 5. Envoi direct (SMTP) — prioritaire, sans ngrok */}
+          <section style={sectionDelay(4)} className="animate-fade-slide">
+            <SectionHeading icon={Send} tone="blue" title="Envoi direct (SMTP)" />
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-sm">
+                <span
+                  className={`h-2 w-2 rounded-full ${smtpWorking ? 'bg-green-500' : smtpAvailable ? 'bg-amber-500' : 'bg-gray-400'}`}
+                  aria-hidden="true"
+                />
+                <span className="text-[#1f1f1f] dark:text-[#e8eaed]">
+                  {smtpWorking
+                    ? 'SMTP opérationnel — les emails partent directement'
+                    : smtpAvailable
+                    ? 'SMTP configuré mais non vérifié'
+                    : 'SMTP non configuré (ajoutez SMTP_* dans .env)'}
+                </span>
+              </div>
+              {smtpAvailable && !smtpWorking && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    // Trigger a re-check
+                    window.dispatchEvent(new CustomEvent('webmail-check-smtp'));
+                  }}
+                  className="ripple-host text-xs font-medium text-[#0b57d0] hover:underline dark:text-[#a8c7fa]"
+                >
+                  Vérifier maintenant
+                </button>
+              )}
+              <p className="text-[11px] leading-relaxed text-[#5f6368] dark:text-[#9aa0a6]">
+                Utilise le mot de passe d'application Gmail déjà dans .env. Aucun tunnel ngrok requis.
+                Prioritaire sur le webhook n8n.
+              </p>
+            </div>
+          </section>
+
+          {/* 6. Notifications de bureau */}
+          <section style={sectionDelay(5)} className="animate-fade-slide">
+            <SectionHeading icon={Bell} tone="amber" title="Notifications de bureau" />
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-sm">
+                <span
+                  className={`h-2 w-2 rounded-full ${
+                    notificationEnabled
+                      ? 'bg-green-500'
+                      : notificationPermission === 'denied'
+                      ? 'bg-red-500'
+                      : 'bg-gray-400'
+                  }`}
+                  aria-hidden="true"
+                />
+                <span className="text-[#1f1f1f] dark:text-[#e8eaed]">
+                  {notificationEnabled
+                    ? 'Activées — son + alerte à chaque nouvel email'
+                    : notificationPermission === 'denied'
+                    ? 'Bloquées par le navigateur (voir paramètres du site)'
+                    : 'Non activées'}
+                </span>
+              </div>
+              {!notificationEnabled && notificationPermission !== 'denied' && (
+                <button
+                  type="button"
+                  onClick={onEnableNotifications}
+                  className="ripple-host w-full rounded-xl border border-[#dadce0] bg-[#f8f9fa] p-2.5 text-xs font-medium text-[#0b57d0] hover:bg-[#eaf1fb] transition-colors dark:border-[#444746] dark:bg-[#1f1f1f] dark:text-[#a8c7fa] dark:hover:bg-[#2b2d30]"
+                >
+                  Autoriser les notifications
+                </button>
+              )}
+              <p className="text-[11px] leading-relaxed text-[#5f6368] dark:text-[#9aa0a6]">
+                Son discret + notification système quand un email arrive et que l'onglet est en arrière-plan.
+              </p>
             </div>
           </section>
 

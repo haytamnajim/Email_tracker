@@ -94,12 +94,37 @@ export function generateReplyWithN8n(payload: GenerateReplyRequest): Promise<Gen
   });
 }
 
+export interface SummarizeEmailResponse {
+  success: boolean;
+  summary: string;
+  bullets?: string[];
+  source: 'n8n' | 'preview' | 'fallback';
+  error?: string;
+}
+
+export function summarizeEmailWithN8n(message: {
+  uid: number;
+  from: { name?: string; address?: string };
+  to?: Array<{ name?: string; address?: string }>;
+  subject: string;
+  date: string;
+  text?: string;
+  html?: string | null;
+}, webhookUrl?: string): Promise<SummarizeEmailResponse> {
+  return request<SummarizeEmailResponse>(`${BASE}/n8n/summarize`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message, webhookUrl }),
+  });
+}
+
 export interface SendEmailRequest {
   sendWebhookUrl?: string;
   to: string;
   subject: string;
   body: string;
   messageUid?: number;
+  folder?: string;
 }
 
 export interface SendEmailResponse {
@@ -115,6 +140,29 @@ export function sendEmailWithN8n(payload: SendEmailRequest): Promise<SendEmailRe
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
+}
+
+/** Envoi direct par SMTP (prioritaire), fallback n8n géré par l'appelant. */
+export function sendEmailWithSmtp(payload: SendEmailRequest): Promise<SendEmailResponse> {
+  return request<SendEmailResponse>(`${BASE}/smtp/send`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+}
+
+/** Réponse directe par SMTP avec rattachement au fil. */
+export function sendReplyWithSmtp(payload: SendEmailRequest): Promise<SendEmailResponse> {
+  return request<SendEmailResponse>(`${BASE}/smtp/send-reply`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+}
+
+/** Vérifie si le SMTP direct est disponible. */
+export function getSmtpStatus(): Promise<{ available: boolean; working: boolean }> {
+  return request<{ available: boolean; working: boolean }>(`${BASE}/smtp/status`);
 }
 
 export function cancelReplyWithN8n(messageUid?: number, webhookUrl?: string): Promise<{ success: boolean }> {
@@ -138,4 +186,86 @@ export function getN8nConfig(): Promise<{
     defaultSendWebhookUrl: string | null;
   }>(`${BASE}/n8n/config`);
 }
+
+export interface DetectMeetingRequest {
+  webhookUrl?: string;
+  message: {
+    uid: number;
+    from: { name?: string; address?: string };
+    subject: string;
+    date: string;
+    text?: string;
+    html?: string | null;
+  };
+}
+
+export interface DetectMeetingResponse {
+  success: boolean;
+  isMeeting: boolean;
+  confidence: number;
+  reason: string;
+  suggestedTitle?: string;
+  source: 'n8n' | 'fallback';
+}
+
+export function detectMeetingWithAI(payload: DetectMeetingRequest): Promise<DetectMeetingResponse> {
+  return request<DetectMeetingResponse>(`${BASE}/n8n/detect-meeting`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  }).catch(() => ({
+    success: false,
+    isMeeting: false,
+    confidence: 0,
+    reason: 'Erreur réseau lors de la détection.',
+    source: 'fallback' as const,
+  }));
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Flags IMAP (lu/non lu, étoile)
+// ─────────────────────────────────────────────────────────────────
+
+export interface FlagResponse {
+  success: boolean;
+  action: string;
+  count?: number;
+}
+
+/** Marque un message comme lu/non lu. */
+export function markMessageRead(uid: number, folder: string, read: boolean): Promise<FlagResponse> {
+  return request<FlagResponse>(`${BASE}/flags/${uid}/read?folder=${encodeURIComponent(folder)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ value: read }),
+  });
+}
+
+/** Marque un message comme suivi/non suivi (étoile). */
+export function markMessageFlagged(uid: number, folder: string, flagged: boolean): Promise<FlagResponse> {
+  return request<FlagResponse>(`${BASE}/flags/${uid}/flagged?folder=${encodeURIComponent(folder)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ value: flagged }),
+  });
+}
+
+/** Marque plusieurs messages comme lus/non lus. */
+export function markMessagesRead(uids: number[], folder: string, read: boolean): Promise<FlagResponse> {
+  return request<FlagResponse>(`${BASE}/flags/batch/read`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ uids, folder, value: read }),
+  });
+}
+
+/** Marque plusieurs messages comme suivis/non suivis. */
+export function markMessagesFlagged(uids: number[], folder: string, flagged: boolean): Promise<FlagResponse> {
+  return request<FlagResponse>(`${BASE}/flags/batch/flagged`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ uids, folder, value: flagged }),
+  });
+}
+
 

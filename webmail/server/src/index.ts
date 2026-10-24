@@ -6,6 +6,8 @@ import { MailError } from './errors.ts';
 import { foldersRouter } from './routes/folders.ts';
 import { messagesRouter } from './routes/messages.ts';
 import { n8nRouter } from './routes/n8n.ts';
+import { smtpRouter } from './routes/smtp.ts';
+import { flagsRouter } from './routes/flags.ts';
 
 const app = express();
 app.disable('x-powered-by');
@@ -30,6 +32,8 @@ app.get('/api/health', (_req, res) => {
 app.use('/api/folders', foldersRouter);
 app.use('/api/messages', messagesRouter);
 app.use('/api/n8n', n8nRouter);
+app.use('/api/smtp', smtpRouter);
+app.use('/api/flags', flagsRouter);
 
 app.use('/api', (_req, res) => {
   res.status(404).json({ error: 'Route inconnue.' });

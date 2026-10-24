@@ -266,18 +266,24 @@ export async function imapListMessages(query: MessageQuery): Promise<Paginated<M
 
     const found = await imap.search(search, { uid: true });
     let uids = Array.isArray(found) ? found : [];
-    if (uids.length > MAX_SCANNED) uids = uids.slice(-MAX_SCANNED);
+    const isFiltered = Boolean(query.q || query.from || query.to || query.subject || query.attachments);
+    const limitScanned = isFiltered ? MAX_SCANNED : 300;
+    if (uids.length > limitScanned) uids = uids.slice(-limitScanned);
 
     // 1re passe : métadonnées (dates, drapeaux, structure) pour trier et filtrer.
     const metas: MessageMeta[] = [];
     if (uids.length > 0) {
-      for await (const message of imap.fetch(uids, {
-        uid: true,
-        flags: true,
-        envelope: true,
-        internalDate: true,
-        bodyStructure: true,
-      })) {
+      for await (const message of imap.fetch(
+        uids,
+        {
+          uid: true,
+          flags: true,
+          envelope: true,
+          internalDate: true,
+          bodyStructure: true,
+        },
+        { uid: true },
+      )) {
         metas.push(
           metaFromFlags(
             message.uid,
@@ -305,7 +311,7 @@ export async function imapListMessages(query: MessageQuery): Promise<Paginated<M
     const pageUids = pageMetas.map((meta) => meta.uid);
     const previews = new Map<number, string>();
     if (pageUids.length > 0) {
-      for await (const message of imap.fetch(pageUids, { uid: true, source: true })) {
+      for await (const message of imap.fetch(pageUids, { uid: true, source: true }, { uid: true })) {
         if (!message.source) continue;
         const parsed = await simpleParser(message.source);
         previews.set(message.uid, makePreview(parsed.text ?? parsed.subject ?? ''));

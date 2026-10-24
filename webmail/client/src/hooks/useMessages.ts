@@ -4,12 +4,11 @@ import type { MessageSummary } from '../types';
 
 export const PAGE_SIZE = 25;
 /**
- * Le cahier des charges impose une actualisation d'une minute. La valeur de
- * 30 s qui était en place doublait la charge IMAP pour rien.
+ * Actualisation automatique rapide (10 secondes) pour détecter les nouveaux emails quasi instantanément.
  */
-const AUTO_REFRESH_MS = 60_000;
-/** Un simple Alt+Tab ne doit pas déclencher d'aller-retour IMAP. */
-const MIN_HIDDEN_BEFORE_REFRESH = 30_000;
+const AUTO_REFRESH_MS = 10_000;
+/** Au retour sur l'onglet, rafraîchir si absent depuis plus de 5s */
+const MIN_HIDDEN_BEFORE_REFRESH = 5_000;
 const SEARCH_DEBOUNCE_MS = 300;
 
 export interface MessagesFilters {

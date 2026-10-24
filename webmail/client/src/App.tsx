@@ -21,7 +21,7 @@ import { useMessage } from './hooks/useMessage';
 import { useMessages } from './hooks/useMessages';
 import { useTheme } from './hooks/useTheme';
 import { categorizeMessage, countByCategory } from './utils/categories';
-import { sendEmailWithN8n } from './api';
+import { sendEmailWithN8n, sendEmailWithSmtp, getSmtpStatus, markMessageRead, markMessageFlagged } from './api';
 import { Bell } from 'lucide-react';
 import { EMPTY_ADVANCED_FILTERS } from './types';
 import type { AdvancedFilters } from './types';
@@ -56,6 +56,14 @@ export default function App() {
 
   // Toasts / Snackbars
   const [toasts, setToasts] = useState<ToastData[]>([]);
+
+  // Statut SMTP direct (prioritaire sur n8n)
+  const [smtpAvailable, setSmtpAvailable] = useState(false);
+  const [smtpWorking, setSmtpWorking] = useState(false);
+
+  // Notifications de bureau
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>('default');
+  const [notificationEnabled, setNotificationEnabled] = useState(false);
 
   const addToast = useCallback(
     (message: string, actionLabel?: string, onAction?: () => void) => {
@@ -137,7 +145,81 @@ export default function App() {
     return () => window.clearTimeout(purge);
   }, [foldersLoading, messagesLoading]);
 
-  // Application des surcharges locales (masquage, lu/non lu, favoris)
+  // ── Statut SMTP : on vérifie au démarrage et on rafraîchit à la demande ──
+  const checkSmtpStatus = useCallback(async () => {
+    try {
+      const status = await getSmtpStatus();
+      setSmtpAvailable(status.available);
+      setSmtpWorking(status.working);
+    } catch {
+      setSmtpAvailable(false);
+      setSmtpWorking(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void checkSmtpStatus();
+    const handler = () => void checkSmtpStatus();
+    window.addEventListener('webmail-check-smtp', handler);
+    return () => window.removeEventListener('webmail-check-smtp', handler);
+  }, [checkSmtpStatus]);
+
+  // ── Notifications de bureau : demande de permission au premier chargement ──
+  useEffect(() => {
+    if (typeof Notification !== 'undefined') {
+      setNotificationPermission(Notification.permission);
+      setNotificationEnabled(Notification.permission === 'granted');
+    }
+  }, []);
+
+  const requestNotificationPermission = useCallback(async () => {
+    if (typeof Notification === 'undefined') return false;
+    const perm = await Notification.requestPermission();
+    setNotificationPermission(perm);
+    const granted = perm === 'granted';
+    setNotificationEnabled(granted);
+    return granted;
+  }, []);
+
+  // ── Détection nouveaux emails → notification sonore + bureau ──
+  // On conserve la référence aux UIDs connus côté hook useMessages (knownUids),
+  // mais on a besoin ici de déclencher la notification au moment où newCount > 0.
+  const lastNewCountRef = useRef(0);
+  useEffect(() => {
+    if (newCount > lastNewCountRef.current) {
+      const arrived = newCount - lastNewCountRef.current;
+      // Son discret (AudioContext, pas de fichier externe)
+      try {
+        const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(880, ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(440, ctx.currentTime + 0.15);
+        gain.gain.setValueAtTime(0.08, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
+        osc.connect(gain).connect(ctx.destination);
+        osc.start(ctx.currentTime);
+        osc.stop(ctx.currentTime + 0.35);
+      } catch {
+        // AudioContext bloqué (politique navigateur) : on ignore.
+      }
+      // Notification de bureau si autorisée et onglet pas visible
+      if (notificationEnabled && document.visibilityState !== 'visible') {
+        try {
+          const title = arrived === 1 ? 'Nouvel email' : `${arrived} nouveaux emails`;
+          new Notification(title, {
+            body: arrived === 1 ? 'Un message vient d\'arriver.' : `${arrived} messages sont arrivés.`,
+            icon: '/vite.svg',
+            tag: 'webmail-new-mail',
+          } as NotificationOptions & { renotify?: boolean });
+        } catch {
+          // Notification bloquée : on ignore.
+        }
+      }
+    }
+    lastNewCountRef.current = newCount;
+  }, [newCount, notificationEnabled]);
   const items = useMemo(() => {
     return rawItems
       .filter((item) => !hiddenUids.has(item.uid))
@@ -243,12 +325,12 @@ export default function App() {
     );
   }, [visibleItems, starredUids]);
 
-  // Toggles favoris et importants
+  // Toggles favoris (étoile) — synchronise avec IMAP (\Flagged)
   const handleToggleStar = useCallback((uid: number, e?: React.MouseEvent) => {
     e?.stopPropagation();
+    const isNowStarred = !starredUids.has(uid);
     setStarredUids((prev) => {
       const next = new Set(prev);
-      const isNowStarred = !next.has(uid);
       if (isNowStarred) {
         next.add(uid);
         addToast('Message ajouté aux favoris');
@@ -258,7 +340,12 @@ export default function App() {
       }
       return next;
     });
-  }, [addToast]);
+    // Sync IMAP (fire-and-forget, l'UI est déjà mise à jour)
+    void markMessageFlagged(uid, effectiveImapFolder, isNowStarred).catch(() => {
+      // Si l'appel échoue, l'état local reste — l'utilisateur peut réessayer.
+      // On ne fait pas de rollback automatique pour éviter le clignotement.
+    });
+  }, [addToast, effectiveImapFolder, starredUids]);
 
   const handleToggleImportant = useCallback((uid: number, e?: React.MouseEvent) => {
     e?.stopPropagation();
@@ -312,8 +399,12 @@ export default function App() {
       const nextState = !current;
       setReadOverrides((prev) => new Map(prev).set(uid, nextState));
       addToast(nextState ? 'Marqué comme lu' : 'Marqué comme non lu');
+      // Sync IMAP
+      void markMessageRead(uid, effectiveImapFolder, nextState).catch(() => {
+        // Échec silencieux : l'état local reste.
+      });
     },
-    [items, addToast],
+    [items, addToast, effectiveImapFolder],
   );
 
   const handleSnooze = useCallback(
@@ -385,9 +476,25 @@ export default function App() {
     addToast(`${uidsToHide.length} conversation(s) mise(s) en attente.`);
   }, [checkedUids, addToast]);
 
-  // Envoi d'email via le webhook n8n
+  // Envoi d'email : SMTP direct prioritaire, n8n en repli
   const handleSendEmail = useCallback(
-    async (to: string, subject: string, body: string, messageUid?: number): Promise<boolean> => {
+    async (to: string, subject: string, body: string, messageUid?: number, folder?: string): Promise<boolean> => {
+      // 1) Essaye SMTP direct (fonctionne sans ngrok)
+      if (smtpAvailable && smtpWorking) {
+        try {
+          const res = await sendEmailWithSmtp({ to, subject, body, messageUid, folder });
+          if (res.success) {
+            addToast(`Message "${subject || 'Sans objet'}" envoyé (SMTP).`);
+            return true;
+          }
+          // Si SMTP échoue, on passe au fallback n8n sans interrompre.
+          console.warn('[SMTP send failed, falling back to n8n]', res.error);
+        } catch (err) {
+          console.warn('[SMTP send error, falling back to n8n]', err);
+        }
+      }
+
+      // 2) Fallback : webhook n8n (nécessite ngrok)
       const storedSendWebhook = localStorage.getItem('n8n_send_webhook_url') || undefined;
       try {
         const res = await sendEmailWithN8n({
@@ -399,7 +506,7 @@ export default function App() {
         });
 
         if (res.success) {
-          addToast(`Message "${subject || 'Sans objet'}" envoyé avec succès à ${to}.`);
+          addToast(`Message "${subject || 'Sans objet'}" envoyé (n8n).`);
           return true;
         } else {
           addToast(`Échec de l'envoi : ${res.error || 'Erreur n8n'}`);
@@ -411,7 +518,7 @@ export default function App() {
         return false;
       }
     },
-    [addToast],
+    [addToast, smtpAvailable, smtpWorking],
   );
 
   // Raccourcis clavier globaux
@@ -555,9 +662,13 @@ export default function App() {
     onArchive: handleArchive,
     onDelete: handleDelete,
     onToggleStar: handleToggleStar,
+    onToggleRead: handleToggleRead,
     isStarred: selectedUid ? starredUids.has(selectedUid) : false,
-    onSendReply: handleSendEmail,
+    isRead: selectedUid ? (readOverrides.get(selectedUid) ?? rawMessage?.isRead ?? false) : false,
+    onSendReply: (to: string, subject: string, body: string, messageUid?: number) =>
+      handleSendEmail(to, subject, body, messageUid, effectiveImapFolder),
     onCancelReply: () => addToast('Génération de réponse annulée.'),
+    onCancelSummary: () => addToast('Génération du résumé annulée.'),
   };
 
   const showFullReader = splitView === 'none' && selectedUid !== null;
@@ -784,6 +895,11 @@ export default function App() {
         onChangeTheme={setTheme}
         splitView={splitView}
         onChangeSplitView={setSplitView}
+        smtpAvailable={smtpAvailable}
+        smtpWorking={smtpWorking}
+        notificationEnabled={notificationEnabled}
+        notificationPermission={notificationPermission}
+        onEnableNotifications={requestNotificationPermission}
       />
 
       {/* ── 6. Modale d'aide des raccourcis clavier ── */}

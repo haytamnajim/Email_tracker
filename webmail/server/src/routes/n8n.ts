@@ -133,6 +133,129 @@ n8nRouter.post('/generate-reply', async (req: Request, res: Response) => {
 });
 
 /**
+ * Route POST /api/n8n/summarize
+ * Transmet le message sélectionné au webhook n8n pour générer un résumé en 3 points clés.
+ */
+n8nRouter.post('/summarize', async (req: Request, res: Response) => {
+  const { webhookUrl, message } = req.body as {
+    webhookUrl?: string;
+    message: {
+      uid: number;
+      from: { name?: string; address?: string };
+      to?: Array<{ name?: string; address?: string }>;
+      subject: string;
+      date: string;
+      text?: string;
+      html?: string | null;
+    };
+  };
+
+  if (!message) {
+    res.status(400).json({ error: 'Message manquant.' });
+    return;
+  }
+
+  const targetUrl = (webhookUrl || config.n8nWebhookUrl || '').trim();
+
+  // Corps de l'email extrait
+  const rawText = message.text?.trim() || '';
+  const htmlText = message.html
+    ? message.html
+        .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+        .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/\s{2,}/g, ' ')
+        .trim()
+    : '';
+  const emailBody = rawText || htmlText;
+
+  if (!targetUrl) {
+    // Résumé intelligent de secours si webhook non connecté
+    const fallbackBullets = [
+      `Objet principal : "${message.subject || 'Sans objet'}" envoyé par ${message.from?.name || message.from?.address}.`,
+      `Contenu clé : ${emailBody.slice(0, 150) || 'Aucun corps textuel détecté.'}...`,
+      `Action suggérée : Prendre connaissance et formuler un retour si nécessaire.`,
+    ];
+    res.json({
+      success: true,
+      summary: fallbackBullets.map((b) => `• ${b}`).join('\n'),
+      bullets: fallbackBullets,
+      source: 'preview',
+    });
+    return;
+  }
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 25000);
+
+    const payload = {
+      event: 'summarize_email',
+      message: {
+        uid: message.uid,
+        from: message.from,
+        to: message.to,
+        subject: message.subject || '(aucun objet)',
+        date: message.date,
+        text: emailBody,
+        snippet: emailBody.slice(0, 1000),
+      },
+      task: 'Résume cet email de manière claire et percutante en exactement 3 points clés (tirets).',
+      timestamp: new Date().toISOString(),
+    };
+
+    const n8nResponse = await fetch(targetUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json, text/plain, */*',
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeout);
+
+    if (!n8nResponse.ok) {
+      throw new Error(`Le webhook n8n a renvoyé l'erreur ${n8nResponse.status}`);
+    }
+
+    const contentType = n8nResponse.headers.get('content-type') || '';
+    let resultText = '';
+
+    if (contentType.includes('application/json')) {
+      const json = await n8nResponse.json();
+      resultText = extractReplyFromJson(json);
+    } else {
+      resultText = await n8nResponse.text();
+    }
+
+    res.json({
+      success: true,
+      summary: resultText.trim(),
+      source: 'n8n',
+    });
+  } catch (err: unknown) {
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    console.error('[n8n summarize error]', errorMessage);
+
+    const fallbackBullets = [
+      `Objet : ${message.subject || '(sans objet)'} (de ${message.from?.name || message.from?.address})`,
+      `Extrait : ${emailBody.slice(0, 140)}...`,
+      `Action : Vérifier le message et répondre si nécessaire.`,
+    ];
+
+    res.json({
+      success: false,
+      error: `Erreur webhook (${errorMessage})`,
+      summary: fallbackBullets.map((b) => `• ${b}`).join('\n'),
+      bullets: fallbackBullets,
+      source: 'fallback',
+    });
+  }
+});
+
+/**
  * Interface pour l'envoi d'email via n8n
  */
 interface SendEmailPayload {
@@ -374,3 +497,162 @@ Je vous remercie pour ces précisions. Je prends note des éléments partagés e
 Bien cordialement,
 Haytam Najim`;
 }
+
+// ─────────────────────────────────────────────────────────────────
+// Route POST /api/n8n/detect-meeting
+// Envoie le contenu de l'email au pipeline IA n8n pour détecter
+// si l'email contient une demande de réunion / rendez-vous.
+// Réponse attendue du webhook n8n :
+//   { isMeeting: boolean, confidence: number, reason: string, suggestedTitle?: string }
+// ─────────────────────────────────────────────────────────────────
+
+interface DetectMeetingPayload {
+  webhookUrl?: string;
+  message: {
+    uid: number;
+    from: { name?: string; address?: string };
+    subject: string;
+    date: string;
+    text?: string;
+    html?: string | null;
+  };
+}
+
+interface DetectMeetingResult {
+  isMeeting: boolean;
+  confidence: number;   // 0.0 – 1.0
+  reason: string;
+  suggestedTitle?: string;
+  source: 'n8n' | 'fallback';
+}
+
+n8nRouter.post('/detect-meeting', async (req: Request, res: Response) => {
+  const { webhookUrl, message } = req.body as DetectMeetingPayload;
+
+  if (!message || !message.uid) {
+    res.status(400).json({ error: 'Message manquant ou invalide.' });
+    return;
+  }
+
+  const targetUrl = (webhookUrl || config.n8nDetectMeetingWebhookUrl || config.n8nWebhookUrl || '').trim();
+
+  // ── Fallback si aucun webhook configuré : détection locale simple ──
+  if (!targetUrl) {
+    const haystack = `${message.subject ?? ''} ${message.text ?? ''}`.toLowerCase();
+    const MEETING_RE = /\b(meeting|r[eé]union|rendez-vous|rendez vous|rdv|appel|call|zoom|teams|google meet|webinar|webinaire|conf[eé]rence|entretien|interview|discussion|d[eé]mo|pr[eé]sentation|visio)\b/;
+    const matched = MEETING_RE.test(haystack);
+    const result: DetectMeetingResult = {
+      isMeeting: matched,
+      confidence: matched ? 0.6 : 0.05,
+      reason: matched
+        ? 'Détection locale : mots-clés de réunion trouvés dans le sujet ou le corps.'
+        : "Aucun mot-clé de réunion détecté (analyse locale — configurez N8N_DETECT_MEETING_WEBHOOK_URL pour l'IA).",
+      suggestedTitle: matched ? message.subject : undefined,
+      source: 'fallback',
+    };
+    res.json({ success: true, ...result });
+    return;
+  }
+
+  // ── Appel au pipeline n8n ──
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20_000);
+
+    // Extraction du corps texte brut
+    const rawText = message.text?.trim() || '';
+    const htmlText = message.html
+      ? message.html
+          .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+          .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+          .replace(/<[^>]+>/g, ' ')
+          .replace(/\s{2,}/g, ' ')
+          .trim()
+      : '';
+    const emailBody = (rawText || htmlText).slice(0, 2000);
+
+    const payload = {
+      event: 'detect_meeting',
+      message: {
+        uid: message.uid,
+        from: message.from,
+        subject: message.subject || '(sans objet)',
+        date: message.date,
+        body: emailBody,
+      },
+      task: `Analyse cet email et détermine s'il contient une demande, une proposition ou une confirmation de réunion, rendez-vous, appel, ou entretien.
+Réponds UNIQUEMENT avec ce JSON (pas de markdown) :
+{
+  "isMeeting": true ou false,
+  "confidence": 0.0 à 1.0,
+  "reason": "explication courte",
+  "suggestedTitle": "titre suggéré pour l'événement si isMeeting est true"
+}`,
+      timestamp: new Date().toISOString(),
+    };
+
+    const n8nResponse = await fetch(targetUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/plain, */*' },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+
+    if (!n8nResponse.ok) {
+      throw new Error(`Le webhook n8n a renvoyé l'erreur ${n8nResponse.status}`);
+    }
+
+    const contentType = n8nResponse.headers.get('content-type') || '';
+    let parsed: Record<string, unknown> = {};
+
+    if (contentType.includes('application/json')) {
+      const raw = await n8nResponse.json();
+      // Le node n8n peut renvoyer un tableau [ { isMeeting: ... } ] ou un objet direct
+      parsed = Array.isArray(raw) ? (raw[0] as Record<string, unknown>) : (raw as Record<string, unknown>);
+      // Parfois le résultat est emballé dans .output ou .text (AI Agent node)
+      if (typeof parsed.output === 'string') {
+        try { parsed = JSON.parse(parsed.output as string); } catch { /* keep as-is */ }
+      }
+      if (typeof parsed.text === 'string') {
+        try { parsed = JSON.parse((parsed.text as string).replace(/```json?/gi, '').replace(/```/g, '').trim()); } catch { /* keep as-is */ }
+      }
+    } else {
+      // Réponse texte brut : l'IA a renvoyé du JSON en texte
+      const raw = await n8nResponse.text();
+      const cleaned = raw.replace(/```json?/gi, '').replace(/```/g, '').trim();
+      try { parsed = JSON.parse(cleaned); } catch { /* fallback */ }
+    }
+
+    const result: DetectMeetingResult = {
+      isMeeting: Boolean(parsed.isMeeting ?? parsed.is_meeting ?? false),
+      confidence: Number(parsed.confidence ?? 0.7),
+      reason: String(parsed.reason ?? 'Analyse IA n8n effectuée.'),
+      suggestedTitle: parsed.suggestedTitle
+        ? String(parsed.suggestedTitle)
+        : parsed.suggested_title
+        ? String(parsed.suggested_title)
+        : message.subject,
+      source: 'n8n',
+    };
+
+    res.json({ success: true, ...result });
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    console.error('[detect-meeting error]', errorMsg);
+
+    // Fallback local en cas d'erreur réseau
+    const haystack = `${message.subject ?? ''} ${message.text ?? ''}`.toLowerCase();
+    const MEETING_RE = /\b(meeting|r[eé]union|rendez-vous|rdv|appel|call|zoom|teams|google meet|webinar|entretien|visio)\b/;
+    const matched = MEETING_RE.test(haystack);
+    res.json({
+      success: false,
+      isMeeting: matched,
+      confidence: matched ? 0.5 : 0.05,
+      reason: `Erreur IA (${errorMsg}) — détection locale de secours utilisée.`,
+      suggestedTitle: matched ? message.subject : undefined,
+      source: 'fallback',
+    });
+  }
+});
+
