@@ -25,6 +25,13 @@ import {
   Sparkles,
   CalendarPlus,
   CalendarCheck,
+  Briefcase,
+  Heart,
+  Zap,
+  Bot,
+  CheckCircle2,
+  CalendarClock,
+  User,
 } from 'lucide-react';
 import type { MessageDetail, Theme } from '../types';
 import { attachmentUrl, generateReplyWithN8n, cancelReplyWithN8n, summarizeEmailWithN8n, detectMeetingWithAI } from '../api';
@@ -90,6 +97,44 @@ function buildFrameDocument(
   )}</style></head><body>${clean}</body></html>`;
 }
 
+/**
+ * Teintes du sélecteur de ton.
+ *
+ * Chaque ton porte sa propre identité chromatique. L'état actif est **teinté**
+ * et non plein : le texte reste sombre sur fond clair (et inversement en
+ * sombre), ce qui garantit un contraste ≥ 4,5:1 quelle que soit la teinte —
+ * un fond plein ambre aurait échoué de peu en petit corps.
+ */
+const REPLY_TONES = [
+  {
+    id: 'professionnel',
+    label: 'Professionnel',
+    hint: 'Formel et structuré',
+    icon: Briefcase,
+    active:
+      'bg-[#e8f0fe] text-[#0b3d91] shadow-[inset_0_0_0_1px_#0b57d0] dark:bg-[#004a77]/45 dark:text-[#d3e3fd] dark:shadow-[inset_0_0_0_1px_#a8c7fa]',
+    idle: 'text-[#0b57d0] dark:text-[#a8c7fa]',
+  },
+  {
+    id: 'amical',
+    label: 'Convivial',
+    hint: 'Chaleureux et proche',
+    icon: Heart,
+    active:
+      'bg-[#e6f4ea] text-[#0d652d] shadow-[inset_0_0_0_1px_#137333] dark:bg-[#0d3b24] dark:text-[#a8f0c6] dark:shadow-[inset_0_0_0_1px_#6dd58c]',
+    idle: 'text-[#137333] dark:text-[#6dd58c]',
+  },
+  {
+    id: 'court',
+    label: 'Bref & Direct',
+    hint: 'Droit au but',
+    icon: Zap,
+    active:
+      'bg-[#fef7e0] text-[#7d4600] shadow-[inset_0_0_0_1px_#b06000] dark:bg-[#3f2e00] dark:text-[#ffe08a] dark:shadow-[inset_0_0_0_1px_#fdd663]',
+    idle: 'text-[#b06000] dark:text-[#fdd663]',
+  },
+] as const;
+
 export default function MessageReader({
   message,
   loading,
@@ -101,8 +146,7 @@ export default function MessageReader({
   onArchive,
   onDelete,
   onToggleStar,
-  isStarred = false,
-  onSendReply,
+  isStarred = false,onSendReply,
   onCancelReply,
   onCancelSummary,
 }: MessageReaderProps) {
@@ -111,6 +155,7 @@ export default function MessageReader({
   const [replyMode, setReplyMode] = useState<'reply' | 'forward' | null>(null);
   const [replyText, setReplyText] = useState('');
   const [replySending, setReplySending] = useState(false);
+  const [selectedTone, setSelectedTone] = useState<'professionnel' | 'amical' | 'court'>('professionnel');
   const [isGeneratingReply, setIsGeneratingReply] = useState(false);
   const [generationError, setGenerationError] = useState<string | null>(null);
 
@@ -168,7 +213,7 @@ export default function MessageReader({
       webhookUrl: storedWebhook,
       message: {
         uid: message.uid,
-        from: message.from,
+        from: { name: message.from?.name, address: message.from?.address },
         subject: message.subject,
         date: message.date,
         text: message.text,
@@ -203,8 +248,11 @@ export default function MessageReader({
       const res = await summarizeEmailWithN8n(
         {
           uid: message.uid,
-          from: message.from,
-          to: message.to,
+          from: { name: message.from?.name, address: message.from?.address },
+          to: (message.to ?? []).map((entry) => ({
+            name: entry.name,
+            address: entry.address,
+          })),
           subject: message.subject,
           date: message.date,
           text: message.text,
@@ -235,8 +283,15 @@ export default function MessageReader({
     onCancelSummary?.();
   };
 
-  const handleDirectGenerateReply = async () => {
+  const handleDirectGenerateReply = async (toneToUse?: unknown) => {
     if (!message) return;
+    const tone: 'professionnel' | 'amical' | 'court' =
+      typeof toneToUse === 'string' && (toneToUse === 'professionnel' || toneToUse === 'amical' || toneToUse === 'court')
+        ? toneToUse
+        : selectedTone;
+    if (typeof toneToUse === 'string' && (toneToUse === 'professionnel' || toneToUse === 'amical' || toneToUse === 'court')) {
+      setSelectedTone(toneToUse);
+    }
     setReplyMode('reply');
     setIsGeneratingReply(true);
     setGenerationError(null);
@@ -248,14 +303,20 @@ export default function MessageReader({
         webhookUrl: storedWebhook,
         message: {
           uid: message.uid,
-          from: message.from,
-          to: message.to,
+          // Adresses recopiées champ par champ : passer l'objet reçu tel quel
+          // laissait entrer des propriétés parasites et faisait échouer la
+          // sérialisation de la requête.
+          from: { name: message.from?.name, address: message.from?.address },
+          to: (message.to ?? []).map((entry) => ({
+            name: entry.name,
+            address: entry.address,
+          })),
           subject: message.subject,
           date: message.date,
           text: message.text,
           html: message.html,
         },
-        tone: 'professionnel',
+        tone,
       });
 
       if (res.reply) {
@@ -452,7 +513,7 @@ export default function MessageReader({
 
           <button
             type="button"
-            onClick={handleDirectGenerateReply}
+            onClick={() => handleDirectGenerateReply()}
             disabled={isGeneratingReply}
             title="Générer une réponse avec l'IA"
             className="flex h-9 w-9 items-center justify-center rounded-full text-[#444746] dark:text-[#c4c7c5] hover:bg-[#f1f3f4] dark:hover:bg-[#282a2c] hover:text-[#0b57d0] dark:hover:text-[#a8c7fa] transition-colors disabled:opacity-50"
@@ -493,24 +554,40 @@ export default function MessageReader({
             <div className="min-w-0">
               {isDetectingMeeting ? (
                 <>
-                  <p className="text-xs font-bold text-slate-500 dark:text-slate-400">🤖 Analyse IA en cours…</p>
+                  <p className="flex items-center gap-1.5 text-xs font-bold text-slate-500 dark:text-slate-400">
+                    <Bot className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                    Analyse IA en cours…
+                  </p>
                   <p className="text-[11px] text-[#5f6368] dark:text-[#9aa0a6]">L'IA vérifie si cet email contient une demande de réunion.</p>
                 </>
               ) : meetingConfirmed ? (
                 <>
-                  <p className="text-xs font-bold text-emerald-700 dark:text-emerald-300">✅ Rendez-vous confirmé !</p>
+                  <p className="flex items-center gap-1.5 text-xs font-bold text-emerald-700 dark:text-emerald-300">
+                    <CheckCircle2 className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                    Rendez-vous confirmé !
+                  </p>
                   <p className="text-[11px] text-[#5f6368] dark:text-[#9aa0a6] truncate">{meetingTitle} · {meetingDate} à {meetingTime}</p>
                 </>
               ) : (
                 <>
                   <div className="flex items-center gap-2">
-                    <p className="text-xs font-bold text-amber-700 dark:text-amber-300">📅 Réunion détectée par l'IA</p>
-                    <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
+                    <p className="flex items-center gap-1.5 text-xs font-bold text-amber-700 dark:text-amber-300">
+                      <CalendarClock className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                      Réunion détectée par l'IA
+                    </p>
+                    <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
                       meetingSource === 'n8n'
                         ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300'
                         : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
                     }`}>
-                      {meetingSource === 'n8n' ? `🤖 IA · ${Math.round(meetingConfidence * 100)}%` : '🔍 Local'}
+                      {meetingSource === 'n8n' ? (
+                        <>
+                          <Bot className="h-3 w-3 shrink-0" aria-hidden="true" />
+                          IA · {Math.round(meetingConfidence * 100)}%
+                        </>
+                      ) : (
+                        'Local'
+                      )}
                     </span>
                   </div>
                   <p className="text-[11px] text-[#5f6368] dark:text-[#9aa0a6] truncate" title={meetingReason}>{meetingReason || 'Cliquez pour planifier le rendez-vous.'}</p>
@@ -619,8 +696,11 @@ export default function MessageReader({
                   <option value="120">2 heures</option>
                 </select>
               </div>
-              <div className="rounded-xl bg-[#eaf1fb] dark:bg-[#004a77]/20 border border-[#d3e3fd] dark:border-[#004a77]/40 px-3 py-2 text-xs text-[#0b57d0] dark:text-[#a8c7fa]">
-                <span className="font-semibold">👤 Avec :</span> {message?.from?.name ?? message?.from?.address}
+              <div className="flex items-center gap-1.5 rounded-xl bg-[#eaf1fb] dark:bg-[#004a77]/20 border border-[#d3e3fd] dark:border-[#004a77]/40 px-3 py-2 text-xs text-[#0b57d0] dark:text-[#a8c7fa]">
+                <User className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                <span>
+                  <span className="font-semibold">Avec :</span> {message?.from?.name ?? message?.from?.address}
+                </span>
               </div>
             </div>
 
@@ -909,7 +989,7 @@ export default function MessageReader({
             {/* Bouton Suggérer une réponse (style Gmail pur, 1 clic direct) */}
             <button
               type="button"
-              onClick={handleDirectGenerateReply}
+              onClick={() => handleDirectGenerateReply()}
               disabled={isGeneratingReply}
               className="inline-flex items-center gap-2 rounded-full border border-[#dadce0] dark:border-[#444746] px-5 py-2.5 text-sm font-medium text-[#0b57d0] dark:text-[#a8c7fa] hover:bg-[#eaf1fb] dark:hover:bg-[#004a77]/30 transition-colors cursor-pointer disabled:opacity-60"
             >
@@ -929,12 +1009,12 @@ export default function MessageReader({
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={handleDirectGenerateReply}
+                  onClick={() => handleDirectGenerateReply()}
                   disabled={isGeneratingReply}
                   className="inline-flex items-center gap-1.5 rounded-full border border-[#dadce0] dark:border-[#444746] px-3 py-1 text-xs font-medium text-[#0b57d0] dark:text-[#a8c7fa] hover:bg-[#eaf1fb] dark:hover:bg-[#004a77]/30 transition-colors disabled:opacity-50"
                 >
                   <Sparkles className={`h-3.5 w-3.5 ${isGeneratingReply ? 'animate-spin' : ''}`} />
-                  <span>{isGeneratingReply ? 'Génération…' : 'Régénérer avec n8n'}</span>
+                  <span>{isGeneratingReply ? 'Génération…' : 'Régénérer'}</span>
                 </button>
 
                 <button
@@ -947,15 +1027,91 @@ export default function MessageReader({
               </div>
             </div>
 
+            {/* Sélecteur de ton — chips Material 3, une teinte par ton */}
+            <div className="mb-3 flex items-center gap-2">
+              <span
+                id="reply-tone-label"
+                className="shrink-0 text-[10.5px] font-semibold uppercase tracking-[0.06em] text-[#5f6368] dark:text-[#9aa0a6]"
+              >
+                Ton
+              </span>
+              <div
+                role="radiogroup"
+                aria-labelledby="reply-tone-label"
+                className="flex items-center gap-1.5 overflow-x-auto pb-0.5"
+              >
+                {REPLY_TONES.map((toneItem) => {
+                  const isActive = selectedTone === toneItem.id;
+                  const Icon = toneItem.icon;
+                  return (
+                    <button
+                      key={toneItem.id}
+                      type="button"
+                      role="radio"
+                      aria-checked={isActive}
+                      title={toneItem.hint}
+                      disabled={isGeneratingReply}
+                      onClick={() => {
+                        setSelectedTone(toneItem.id);
+                        if (replyText.trim()) {
+                          void handleDirectGenerateReply(toneItem.id);
+                        }
+                      }}
+                      className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1.5 text-[11.5px] font-medium transition-[background-color,color,box-shadow,transform] duration-200 motion-safe:active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50 ${
+                        isActive
+                          ? toneItem.active
+                          : 'bg-white text-[#444746] shadow-[inset_0_0_0_1px_#dadce0] hover:bg-[#f6f8fc] dark:bg-[#202124] dark:text-[#c4c7c5] dark:shadow-[inset_0_0_0_1px_#444746] dark:hover:bg-[#282a2c]'
+                      }`}
+                    >
+                      <Icon
+                        className={`h-3.5 w-3.5 shrink-0 ${isActive ? '' : toneItem.idle}`}
+                        strokeWidth={2.2}
+                        aria-hidden="true"
+                      />
+                      <span className="whitespace-nowrap">{toneItem.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
             {isGeneratingReply ? (
-              <div className="flex flex-col items-center justify-center py-8 px-4 rounded-xl bg-[#eaf1fb]/40 dark:bg-[#004a77]/10 border border-[#d3e3fd]/60 dark:border-[#004a77]/30 text-center animate-pulse my-2">
-                <Sparkles className="h-6 w-6 animate-spin text-[#0b57d0] dark:text-[#a8c7fa] mb-2" />
-                <p className="text-xs font-semibold text-[#0b57d0] dark:text-[#a8c7fa]">
-                  Appel de votre workflow n8n en cours...
-                </p>
-                <p className="text-[11px] text-[#5f6368] dark:text-[#9aa0a6] mt-0.5">
-                  L'agent IA analyse le contenu de l'email et rédige la réponse.
-                </p>
+              <div className="relative overflow-hidden rounded-2xl border border-blue-200/60 dark:border-blue-900/40 bg-gradient-to-br from-blue-50/60 via-slate-50/40 to-indigo-50/40 dark:from-[#0d1527] dark:via-[#131824] dark:to-[#17122a] p-6 my-2 shadow-inner">
+                {/* Effet d'aura lumineuse d'arrière-plan */}
+                <div className="pointer-events-none absolute -top-12 -left-12 h-32 w-32 rounded-full bg-blue-400/20 blur-2xl" />
+                <div className="pointer-events-none absolute -bottom-12 -right-12 h-32 w-32 rounded-full bg-purple-400/20 blur-2xl" />
+
+                <div className="relative flex flex-col items-center justify-center text-center">
+                  {/* Icône avec effet pulsation et anneaux */}
+                  <div className="relative mb-3 flex h-12 w-12 items-center justify-center">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#0b57d0]/25 dark:bg-[#a8c7fa]/20 opacity-75" />
+                    <div className="relative flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-tr from-[#0b57d0] to-[#7c3aed] text-white shadow-md">
+                      <Sparkles className="h-5 w-5 animate-spin" />
+                    </div>
+                  </div>
+
+                  <h4 className="text-sm font-semibold text-[#1f1f1f] dark:text-[#e8eaed]">
+                    Rédaction de la réponse par l'IA…
+                  </h4>
+                  <p className="mt-1 text-xs text-[#5f6368] dark:text-[#9aa0a6] max-w-sm">
+                    Analyse du contexte de votre échange et formulation d'un retour adapté.
+                  </p>
+
+                  {/* Lignes de skeleton avec vague lumineuse */}
+                  <div className="mt-5 w-full max-w-md space-y-2">
+                    <div className="h-2.5 w-4/5 mx-auto rounded-full bg-gradient-to-r from-blue-200 via-indigo-100 to-blue-200 dark:from-blue-900/50 dark:via-indigo-800/40 dark:to-blue-900/50 animate-pulse" />
+                    <div className="h-2.5 w-full mx-auto rounded-full bg-gradient-to-r from-blue-200/70 via-indigo-100/70 to-blue-200/70 dark:from-blue-900/30 dark:via-indigo-800/20 dark:to-blue-900/30 animate-pulse delay-75" />
+                    <div className="h-2.5 w-3/5 mx-auto rounded-full bg-gradient-to-r from-blue-200 via-indigo-100 to-blue-200 dark:from-blue-900/50 dark:via-indigo-800/40 dark:to-blue-900/50 animate-pulse delay-150" />
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleCancelReply}
+                    className="mt-4 inline-flex items-center gap-1.5 rounded-full border border-[#dadce0] dark:border-[#444746] bg-white/80 dark:bg-[#202124]/80 px-3.5 py-1 text-xs font-medium text-[#5f6368] dark:text-[#c4c7c5] hover:text-red-600 dark:hover:text-red-400 hover:bg-white dark:hover:bg-[#202124] transition-all"
+                  >
+                    <span>Annuler la génération</span>
+                  </button>
+                </div>
               </div>
             ) : (
               <textarea

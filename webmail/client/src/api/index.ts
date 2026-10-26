@@ -13,6 +13,26 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * Sérialise le corps d'une requête.
+ *
+ * `JSON.stringify` lève une `TypeError` au message incompréhensible
+ * (« Converting circular structure to JSON --> starting at object with
+ * constructor 'HTMLSpanElement'… ») dès qu'une valeur non sérialisable se
+ * glisse dans la charge utile. Ce message interne s'affichait tel quel dans
+ * l'interface ; on le traduit en erreur exploitable.
+ */
+function jsonBody(payload: unknown): string {
+  try {
+    return JSON.stringify(payload);
+  } catch {
+    throw new ApiError(
+      "Impossible de préparer la requête : une valeur non sérialisable a été détectée. Rechargez la page et réessayez.",
+      0,
+    );
+  }
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   let response: Response;
   try {
@@ -90,7 +110,7 @@ export function generateReplyWithN8n(payload: GenerateReplyRequest): Promise<Gen
   return request<GenerateReplyResponse>(`${BASE}/n8n/generate-reply`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
+    body: jsonBody(payload),
   });
 }
 
@@ -114,7 +134,7 @@ export function summarizeEmailWithN8n(message: {
   return request<SummarizeEmailResponse>(`${BASE}/n8n/summarize`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message, webhookUrl }),
+    body: jsonBody({ message, webhookUrl }),
   });
 }
 
@@ -138,7 +158,7 @@ export function sendEmailWithN8n(payload: SendEmailRequest): Promise<SendEmailRe
   return request<SendEmailResponse>(`${BASE}/n8n/send-email`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
+    body: jsonBody(payload),
   });
 }
 
@@ -147,7 +167,7 @@ export function sendEmailWithSmtp(payload: SendEmailRequest): Promise<SendEmailR
   return request<SendEmailResponse>(`${BASE}/smtp/send`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
+    body: jsonBody(payload),
   });
 }
 
@@ -156,7 +176,7 @@ export function sendReplyWithSmtp(payload: SendEmailRequest): Promise<SendEmailR
   return request<SendEmailResponse>(`${BASE}/smtp/send-reply`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
+    body: jsonBody(payload),
   });
 }
 
@@ -169,7 +189,7 @@ export function cancelReplyWithN8n(messageUid?: number, webhookUrl?: string): Pr
   return request<{ success: boolean }>(`${BASE}/n8n/cancel-reply`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ messageUid, webhookUrl }),
+    body: jsonBody({ messageUid, webhookUrl }),
   }).catch(() => ({ success: false }));
 }
 
@@ -212,7 +232,7 @@ export function detectMeetingWithAI(payload: DetectMeetingRequest): Promise<Dete
   return request<DetectMeetingResponse>(`${BASE}/n8n/detect-meeting`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
+    body: jsonBody(payload),
   }).catch(() => ({
     success: false,
     isMeeting: false,
@@ -237,7 +257,7 @@ export function markMessageRead(uid: number, folder: string, read: boolean): Pro
   return request<FlagResponse>(`${BASE}/flags/${uid}/read?folder=${encodeURIComponent(folder)}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ value: read }),
+    body: jsonBody({ value: read }),
   });
 }
 
@@ -246,7 +266,7 @@ export function markMessageFlagged(uid: number, folder: string, flagged: boolean
   return request<FlagResponse>(`${BASE}/flags/${uid}/flagged?folder=${encodeURIComponent(folder)}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ value: flagged }),
+    body: jsonBody({ value: flagged }),
   });
 }
 
@@ -255,7 +275,7 @@ export function markMessagesRead(uids: number[], folder: string, read: boolean):
   return request<FlagResponse>(`${BASE}/flags/batch/read`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ uids, folder, value: read }),
+    body: jsonBody({ uids, folder, value: read }),
   });
 }
 
@@ -264,7 +284,7 @@ export function markMessagesFlagged(uids: number[], folder: string, flagged: boo
   return request<FlagResponse>(`${BASE}/flags/batch/flagged`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ uids, folder, value: flagged }),
+    body: jsonBody({ uids, folder, value: flagged }),
   });
 }
 
