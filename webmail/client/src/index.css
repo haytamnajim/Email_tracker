@@ -420,6 +420,142 @@ body {
   animation: modalIn 0.2s cubic-bezier(0.2, 0, 0, 1) both;
 }
 
+/* ── Animation d'envoi ──
+   L'avion part du bouton, décrit une cloche, le couvercle se soulève à son
+   approche, une pulsation marque l'entrée dans la boîte, puis la validation
+   apparaît. Les délais sont calés sur ceux de `SendFlight.tsx` : impact à
+   1,19 s, validation à 1,35 s. Toute modification ici doit rester cohérente
+   avec `SEND_FLIGHT_MS`. */
+
+@keyframes sendPlaneFly {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0) rotate(6deg) scale(0.5);
+  }
+  10% {
+    opacity: 1;
+    transform: translate(6px, -10px) rotate(-4deg) scale(1);
+  }
+  40% {
+    transform: translate(100px, -112px) rotate(-26deg) scale(1.08);
+  }
+  66% {
+    transform: translate(182px, -112px) rotate(-14deg) scale(1.04);
+  }
+  88% {
+    opacity: 1;
+    transform: translate(216px, -76px) rotate(8deg) scale(0.78);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(223px, -58px) rotate(18deg) scale(0.3);
+  }
+}
+
+.send-flight__plane {
+  animation: sendPlaneFly 1.15s cubic-bezier(0.45, 0.05, 0.35, 1) 0.18s both;
+}
+
+/* Légère compression à l'impact, puis rebond : la boîte « reçoit » le poids. */
+@keyframes sendBoxPop {
+  0%,
+  66% {
+    transform: translateY(0) scale(1);
+  }
+  76% {
+    transform: translateY(2px) scale(0.985);
+  }
+  88% {
+    transform: translateY(-2px) scale(1.015);
+  }
+  100% {
+    transform: translateY(0) scale(1);
+  }
+}
+
+.send-flight__box {
+  animation: sendBoxPop 1.35s cubic-bezier(0.34, 1.56, 0.64, 1) 0.18s both;
+}
+
+/* Le couvercle s'ouvre juste avant l'arrivée et se referme une fois l'avion
+   avalé. `transform-box: fill-box` donne au groupe SVG un repère local, sans
+   quoi l'origine serait celle du viewBox entier. */
+@keyframes sendLidLift {
+  0%,
+  42% {
+    transform: translateY(0) rotate(0deg);
+  }
+  55% {
+    transform: translateY(-13px) rotate(-24deg);
+  }
+  78% {
+    transform: translateY(-13px) rotate(-24deg);
+  }
+  100% {
+    transform: translateY(0) rotate(0deg);
+  }
+}
+
+.send-flight__lid {
+  transform-box: fill-box;
+  transform-origin: left bottom;
+  animation: sendLidLift 1.55s ease-in-out 0.18s both;
+}
+
+@keyframes sendLandPulse {
+  0% {
+    opacity: 0.7;
+    transform: translate(-50%, -50%) scale(0.35);
+  }
+  60% {
+    opacity: 0.25;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1.9);
+  }
+}
+
+.send-flight__pulse {
+  animation: sendLandPulse 0.6s ease-out 1.15s both;
+}
+
+@keyframes sendLabelIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.send-flight__pending {
+  animation: sendLabelIn 0.25s ease-out 0.12s both;
+}
+
+@keyframes sendDoneIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Pas de délai : le composant ne monte ce libellé qu'au moment de la
+   validation, sinon les deux textes cohabiteraient dans la région live. */
+.send-flight__done {
+  animation: sendDoneIn 0.35s cubic-bezier(0.2, 0, 0, 1) both;
+}
+
+.send-flight__scrim {
+  animation: scrimIn 0.16s ease-out both;
+}
+
 /* ── Accessibilité : anneau de focus visible, façon Material ── */
 :where(button, a, input, select, textarea, [tabindex]):focus-visible {
   outline: 2px solid var(--accent);
@@ -434,5 +570,22 @@ body {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+
+  /* L'animation d'envoi devient une confirmation statique : pas de vol,
+     pas de pulsation, la boîte reste fermée. Les libellés restent lisibles
+     et se remplacent au même rythme que la version animée. */
+  .send-flight__plane,
+  .send-flight__pulse {
+    display: none;
+  }
+
+  .send-flight__box,
+  .send-flight__lid,
+  .send-flight__pending,
+  .send-flight__done {
+    animation: none !important;
+    opacity: 1;
+    transform: none;
   }
 }

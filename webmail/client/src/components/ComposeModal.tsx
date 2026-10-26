@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { AlertCircle } from 'lucide-react';
+import SendFlight, { SEND_DONE_MS, SEND_FLIGHT_MS, type SendPhase } from './SendFlight';
 import {
   X,
   Minus,
@@ -21,7 +23,7 @@ import {
 interface ComposeModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSend: (to: string, subject: string, body: string) => void;
+  onSend: (to: string, subject: string, body: string) => Promise<boolean> | boolean | void;
   initialTo?: string;
   initialSubject?: string;
   initialBody?: string;
@@ -46,25 +48,58 @@ export default function ComposeModal({
   const [isMaximized, setIsMaximized] = useState(false);
   const [showFormatting, setShowFormatting] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const [sendPhase, setSendPhase] = useState<SendPhase>('idle');
+  const [sendError, setSendError] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!to.trim()) return;
+    if (!to.trim() || isSending) return;
 
+    setSendError(null);
     setIsSending(true);
-    setTimeout(() => {
-      onSend(to, subject, body);
-      setIsSending(false);
-      onClose();
-      // Reset fields
+
+    // Le vol part immédiatement : il sert de retour au clic, sans attendre
+    // la réponse réseau (SMTP puis repli n8n peuvent prendre plusieurs secondes).
+    const startedAt = Date.now();
+    setSendPhase('flying');
+
+    /** Laisse le vol atteindre « Envoyé » avant de refermer la fenêtre. */
+    const playOut = async () => {
+      const remaining = Math.max(0, SEND_FLIGHT_MS - (Date.now() - startedAt));
+      if (remaining > 0) {
+        await new Promise((resolve) => setTimeout(resolve, remaining));
+      }
+      setSendPhase('sent');
+      await new Promise((resolve) => setTimeout(resolve, SEND_DONE_MS));
+      setSendPhase('idle');
+    };
+
+    try {
+      const result = await onSend(to, subject, body);
+      if (result === false) {
+        // Échec signalé par le parent : on coupe le vol et on garde la
+        // fenêtre ouverte avec le brouillon intact.
+        setSendPhase('idle');
+        setSendError(
+          "L'email n'a pas pu être envoyé. Vérifiez la configuration SMTP puis réessayez.",
+        );
+        return;
+      }
+      await playOut();
       setTo('');
       setSubject('');
       setBody('');
       setCc('');
       setBcc('');
-    }, 500);
+      onClose();
+    } catch (err: unknown) {
+      setSendPhase('idle');
+      setSendError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setIsSending(false);
+    }
   };
 
   return (
@@ -77,6 +112,8 @@ export default function ComposeModal({
           : 'bottom-0 right-4 sm:right-16 w-[94vw] sm:w-[580px] h-[520px]'
       }`}
     >
+      <SendFlight phase={sendPhase} />
+
       {/* ── Barre de titre / En-tête de la fenêtre ── */}
       <div className="flex h-11 shrink-0 items-center justify-between rounded-t-2xl bg-[#edf2fa] dark:bg-[#282a2d] px-4 cursor-pointer">
         <span
@@ -123,6 +160,16 @@ export default function ComposeModal({
 
       {!isMinimized && (
         <form onSubmit={handleSubmit} className="flex flex-1 flex-col overflow-hidden">
+          {sendError && (
+            <div
+              role="alert"
+              className="flex items-start gap-2 border-b border-[#f6aea9] bg-[#fce8e6] px-4 py-2 text-[11px] leading-snug text-[#a50e0e] dark:border-[#8c2b24] dark:bg-[#3b1714] dark:text-[#f2b8b5]"
+            >
+              <AlertCircle className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              <span>{sendError}</span>
+            </div>
+          )}
+
           {/* Champ Destinataires "À" */}
           <div className="flex items-center border-b border-[#e0e2e7] dark:border-[#3c4043] px-4 py-2">
             <span className="text-xs text-[#5f6368] dark:text-[#9aa0a6] w-12">À</span>

@@ -39,6 +39,7 @@ import { containsRemoteImages, sanitizeEmailHtml } from '../utils/html';
 import { formatAddressList, formatBytes, formatFullDate } from '../utils/format';
 import { senderGradient, senderInitials } from '../utils/colors';
 import { ReaderSkeleton } from './Skeleton';
+import SendFlight, { SEND_DONE_MS, SEND_FLIGHT_MS, type SendPhase } from './SendFlight';
 
 interface MessageReaderProps {
   message: MessageDetail | null;
@@ -146,7 +147,8 @@ export default function MessageReader({
   onArchive,
   onDelete,
   onToggleStar,
-  isStarred = false,onSendReply,
+  isStarred = false,
+  onSendReply,
   onCancelReply,
   onCancelSummary,
 }: MessageReaderProps) {
@@ -155,6 +157,8 @@ export default function MessageReader({
   const [replyMode, setReplyMode] = useState<'reply' | 'forward' | null>(null);
   const [replyText, setReplyText] = useState('');
   const [replySending, setReplySending] = useState(false);
+  // Séquence de l'animation d'envoi : 'idle' → 'flying' → 'sent' → 'idle'.
+  const [sendPhase, setSendPhase] = useState<SendPhase>('idle');
   const [selectedTone, setSelectedTone] = useState<'professionnel' | 'amical' | 'court'>('professionnel');
   const [isGeneratingReply, setIsGeneratingReply] = useState(false);
   const [generationError, setGenerationError] = useState<string | null>(null);
@@ -182,6 +186,7 @@ export default function MessageReader({
     setAllowRemoteImages(false);
     setReplyMode(null);
     setReplyText('');
+    setSendPhase('idle');
     setDetailsOpen(false);
     setIsGeneratingReply(false);
     setGenerationError(null);
@@ -379,19 +384,41 @@ export default function MessageReader({
   const cc = formatAddressList(message.cc);
 
   const handleSendInlineReply = async () => {
-    if (!replyText.trim()) return;
+    if (!replyText.trim() || replySending) return;
     setReplySending(true);
     setGenerationError(null);
+
+    // On lance l'animation tout de suite : elle sert de retour immédiat au
+    // clic, sans attendre la réponse réseau.
+    const startedAt = Date.now();
+    setSendPhase('flying');
+
+    /** Laisse le vol se terminer, affiche « Envoyé », puis referme le voile. */
+    const playOut = async () => {
+      const remaining = Math.max(0, SEND_FLIGHT_MS - (Date.now() - startedAt));
+      if (remaining > 0) {
+        await new Promise((resolve) => setTimeout(resolve, remaining));
+      }
+      setSendPhase('sent');
+      await new Promise((resolve) => setTimeout(resolve, SEND_DONE_MS));
+      setSendPhase('idle');
+    };
+
     try {
       const targetSubject = message.subject?.toLowerCase().startsWith('re:')
         ? message.subject
         : `Re: ${message.subject || '(sans objet)'}`;
       const res = await onSendReply?.(senderAddress, targetSubject, replyText, message.uid);
-      if (res !== false) {
-        setReplyMode(null);
-        setReplyText('');
+      if (res === false) {
+        // Échec signalé par le parent : on coupe le vol, il affiche l'erreur.
+        setSendPhase('idle');
+        return;
       }
+      await playOut();
+      setReplyMode(null);
+      setReplyText('');
     } catch (err: unknown) {
+      setSendPhase('idle');
       const msg = err instanceof Error ? err.message : String(err);
       setGenerationError(msg);
     } finally {
@@ -408,7 +435,9 @@ export default function MessageReader({
   };
 
   return (
-    <article className="flex h-full flex-col overflow-y-auto bg-white dark:bg-[#141414] select-text animate-reader-in">
+    <>
+      <SendFlight phase={sendPhase} />
+      <article className="flex h-full flex-col overflow-y-auto bg-white dark:bg-[#141414] select-text animate-reader-in">
       {/* ── Barre d'outils supérieure Gmail ── */}
       <div className="flex h-12 shrink-0 items-center justify-between border-b border-[#e0e2e7] dark:border-[#3c4043] px-3 bg-white dark:bg-[#141414] sticky top-0 z-20">
         <div className="flex items-center gap-1">
@@ -1153,6 +1182,7 @@ export default function MessageReader({
           </div>
         )}
       </div>
-    </article>
+      </article>
+    </>
   );
 }
