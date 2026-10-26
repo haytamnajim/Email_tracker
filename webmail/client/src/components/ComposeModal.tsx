@@ -1,12 +1,9 @@
 import { useState } from 'react';
-import { AlertCircle } from 'lucide-react';
-import SendFlight, { SEND_DONE_MS, SEND_FLIGHT_MS, type SendPhase } from './SendFlight';
 import {
   X,
   Minus,
   Maximize2,
   Minimize2,
-  Send,
   Paperclip,
   Link2,
   Smile,
@@ -17,8 +14,10 @@ import {
   Italic,
   Underline,
   AlignLeft,
-  ChevronDown,
+  AlertCircle,
 } from 'lucide-react';
+import SendFlight, { SEND_DONE_MS, SEND_FLIGHT_MS, type SendPhase } from './SendFlight';
+import SendButton from './SendButton';
 
 interface ComposeModalProps {
   isOpen: boolean;
@@ -278,30 +277,21 @@ export default function ComposeModal({
             required
             value={body}
             onChange={(e) => setBody(e.target.value)}
+            onKeyDown={(e) => {
+              // Ctrl/⌘ + Entrée envoie, comme dans Gmail.
+              if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                e.preventDefault();
+                e.currentTarget.form?.requestSubmit();
+              }
+            }}
             placeholder="Écrivez votre message ici..."
             className="flex-1 w-full resize-none p-4 bg-transparent text-sm text-[#1f1f1f] dark:text-[#e8eaed] outline-none"
           />
 
           {/* ── Barre d'action inférieure Gmail ── */}
-          <div className="flex h-14 shrink-0 items-center justify-between border-t border-[#e0e2e7] dark:border-[#3c4043] px-4 bg-white dark:bg-[#202124]">
-            {/* Bouton Envoyer officiel Gmail */}
-            <div className="flex items-center">
-              <button
-                type="submit"
-                disabled={isSending || !to.trim()}
-                className="inline-flex h-9 items-center gap-2 rounded-l-full bg-[#0b57d0] dark:bg-[#a8c7fa] px-5 text-xs font-semibold text-white dark:text-[#041e49] shadow-sm hover:bg-[#0842a0] dark:hover:bg-[#8ab4f8] transition-colors disabled:opacity-50"
-              >
-                <Send className="h-3.5 w-3.5" />
-                <span>{isSending ? 'Envoi…' : 'Envoyer'}</span>
-              </button>
-              <button
-                type="button"
-                title="Planifier l'envoi"
-                className="flex h-9 w-7 items-center justify-center rounded-r-full bg-[#0b57d0] dark:bg-[#a8c7fa] text-white dark:text-[#041e49] border-l border-white/20 dark:border-black/10 hover:bg-[#0842a0] dark:hover:bg-[#8ab4f8]"
-              >
-                <ChevronDown className="h-3.5 w-3.5" />
-              </button>
-            </div>
+          <div className="flex h-14 shrink-0 items-center justify-between gap-3 border-t border-[#e0e2e7] bg-[#f8fafd] px-4 dark:border-[#3c4043] dark:bg-[#282a2c]/50">
+            {/* Action principale : un seul bouton, sans menu mort */}
+            <SendButton type="submit" disabled={!to.trim()} loading={isSending} />
 
             {/* Outils multimédias et pièces jointes */}
             <div className="flex items-center gap-1 text-[#5f6368] dark:text-[#9aa0a6]">

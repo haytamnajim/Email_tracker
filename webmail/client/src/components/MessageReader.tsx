@@ -16,7 +16,6 @@ import {
   Paperclip,
   Download,
   ShieldCheck,
-  Send,
   X,
   FileText,
   Image as ImageIcon,
@@ -40,6 +39,7 @@ import { formatAddressList, formatBytes, formatFullDate } from '../utils/format'
 import { senderGradient, senderInitials } from '../utils/colors';
 import { ReaderSkeleton } from './Skeleton';
 import SendFlight, { SEND_DONE_MS, SEND_FLIGHT_MS, type SendPhase } from './SendFlight';
+import SendButton from './SendButton';
 
 interface MessageReaderProps {
   message: MessageDetail | null;
@@ -530,7 +530,7 @@ export default function MessageReader({
             onClick={handleSummarize}
             disabled={isSummarizing}
             title="Résumer cet email avec l'IA"
-            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-all ${
+            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors duration-150 ${
               summaryOpen
                 ? 'bg-[#d3e3fd] text-[#0b57d0] dark:bg-[#004a77]/50 dark:text-[#a8c7fa]'
                 : 'text-[#0b57d0] dark:text-[#a8c7fa] bg-[#eaf1fb] dark:bg-[#004a77]/25 hover:bg-[#d3e3fd] dark:hover:bg-[#004a77]/40'
@@ -563,7 +563,7 @@ export default function MessageReader({
 
       {/* ── Bandeau Détection de Réunion par IA ── */}
       {(isDetectingMeeting || meetingDetected) && (
-        <div className={`mx-6 mt-3 rounded-2xl border px-4 py-3 flex items-center justify-between gap-3 transition-all ${
+        <div className={`mx-6 mt-3 rounded-2xl border px-4 py-3 flex items-center justify-between gap-3 transition-[border-color,background-color] duration-200 ${
           isDetectingMeeting
             ? 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/30'
             : meetingConfirmed
@@ -1029,31 +1029,27 @@ export default function MessageReader({
         ) : (
           /* Bloc de réponse en ligne interactif officiel Gmail */
           <div className="rounded-2xl border border-[#dadce0] dark:border-[#444746] bg-white dark:bg-[#1f1f1f] shadow-md p-4 animate-fade-slide">
-            <div className="flex items-center justify-between border-b border-[#e0e2e7] dark:border-[#3c4043] pb-2 mb-3">
-              <span className="text-xs font-semibold text-[#444746] dark:text-[#c4c7c5] flex items-center gap-1.5">
-                {replyMode === 'reply' ? <CornerUpLeft className="h-3.5 w-3.5" /> : <CornerUpRight className="h-3.5 w-3.5" />}
-                {replyMode === 'reply' ? `Réponse à ${senderName}` : `Transférer : ${message.subject}`}
+            <div className="mb-3 flex items-center justify-between gap-2 border-b border-[#e0e2e7] pb-2 dark:border-[#3c4043]">
+              <span className="flex min-w-0 items-center gap-1.5 text-xs font-semibold text-[#444746] dark:text-[#c4c7c5]">
+                {replyMode === 'reply' ? (
+                  <CornerUpLeft className="h-3.5 w-3.5 shrink-0" />
+                ) : (
+                  <CornerUpRight className="h-3.5 w-3.5 shrink-0" />
+                )}
+                <span className="truncate">
+                  {replyMode === 'reply' ? `Réponse à ${senderName}` : `Transférer : ${message.subject}`}
+                </span>
               </span>
 
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => handleDirectGenerateReply()}
-                  disabled={isGeneratingReply}
-                  className="inline-flex items-center gap-1.5 rounded-full border border-[#dadce0] dark:border-[#444746] px-3 py-1 text-xs font-medium text-[#0b57d0] dark:text-[#a8c7fa] hover:bg-[#eaf1fb] dark:hover:bg-[#004a77]/30 transition-colors disabled:opacity-50"
-                >
-                  <Sparkles className={`h-3.5 w-3.5 ${isGeneratingReply ? 'animate-spin' : ''}`} />
-                  <span>{isGeneratingReply ? 'Génération…' : 'Régénérer'}</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleCancelReply}
-                  className="flex h-6 w-6 items-center justify-center rounded-full text-[#5f6368] dark:text-[#9aa0a6] hover:bg-black/5 dark:hover:bg-white/10"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={() => handleDirectGenerateReply()}
+                disabled={isGeneratingReply}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-[#dadce0] px-3 py-1 text-[11px] font-medium text-[#0b57d0] transition-colors duration-150 hover:bg-[#eaf1fb] disabled:opacity-50 dark:border-[#444746] dark:text-[#a8c7fa] dark:hover:bg-[#004a77]/30"
+              >
+                <Sparkles className={`h-3.5 w-3.5 ${isGeneratingReply ? 'animate-spin' : ''}`} />
+                <span>{isGeneratingReply ? 'Génération…' : 'Régénérer'}</span>
+              </button>
             </div>
 
             {/* Sélecteur de ton — chips Material 3, une teinte par ton */}
@@ -1136,7 +1132,7 @@ export default function MessageReader({
                   <button
                     type="button"
                     onClick={handleCancelReply}
-                    className="mt-4 inline-flex items-center gap-1.5 rounded-full border border-[#dadce0] dark:border-[#444746] bg-white/80 dark:bg-[#202124]/80 px-3.5 py-1 text-xs font-medium text-[#5f6368] dark:text-[#c4c7c5] hover:text-red-600 dark:hover:text-red-400 hover:bg-white dark:hover:bg-[#202124] transition-all"
+                    className="mt-4 inline-flex items-center gap-1.5 rounded-full border border-[#dadce0] dark:border-[#444746] bg-white/80 dark:bg-[#202124]/80 px-3.5 py-1 text-xs font-medium text-[#5f6368] dark:text-[#c4c7c5] hover:text-red-600 dark:hover:text-red-400 hover:bg-white dark:hover:bg-[#202124] transition-colors duration-150"
                   >
                     <span>Annuler la génération</span>
                   </button>
@@ -1147,6 +1143,13 @@ export default function MessageReader({
                 autoFocus
                 value={replyText}
                 onChange={(e) => setReplyText(e.target.value)}
+                onKeyDown={(e) => {
+                  // Ctrl/⌘ + Entrée envoie la réponse, comme dans Gmail.
+                  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                    e.preventDefault();
+                    void handleSendInlineReply();
+                  }
+                }}
                 placeholder="Rédigez votre réponse ici..."
                 rows={6}
                 className="w-full resize-y bg-transparent text-sm text-[#1f1f1f] dark:text-[#e8eaed] placeholder:text-[#5f6368] dark:placeholder:text-[#9aa0a6] outline-none leading-relaxed"
@@ -1159,26 +1162,28 @@ export default function MessageReader({
               </div>
             )}
 
-            <div className="flex items-center justify-between pt-3 border-t border-[#e0e2e7] dark:border-[#3c4043] mt-2">
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
+            {/* ── Pied de carte : actions séparées de la zone de rédaction ──
+                Masqué pendant la génération : le panneau central propose déjà
+                « Annuler la génération » et le bouton d'envoi y serait inerte.
+                Les marges négatives annulent le rembourrage `p-4` de la carte
+                pour que le bandeau touche les bords, sans réindenter tout le
+                contenu. Les coins bas reprennent le rayon de la carte. */}
+            {!isGeneratingReply && (
+              <div className="-mx-4 -mb-4 mt-3 flex items-center justify-between gap-3 rounded-b-2xl border-t border-[#e0e2e7] bg-[#f8fafd] px-4 py-3 dark:border-[#3c4043] dark:bg-[#282a2c]/50">
+                <SendButton
                   onClick={handleSendInlineReply}
-                  disabled={replySending || isGeneratingReply || !replyText.trim()}
-                  className="inline-flex items-center gap-2 rounded-full bg-[#0b57d0] text-white px-5 py-2 text-xs font-semibold hover:bg-[#0842a0] transition-colors disabled:opacity-50"
-                >
-                  <Send className="h-3.5 w-3.5" />
-                  <span>{replySending ? 'Envoi…' : 'Envoyer'}</span>
-                </button>
+                  disabled={!replyText.trim()}
+                  loading={replySending}
+                />
                 <button
                   type="button"
                   onClick={handleCancelReply}
-                  className="rounded-full px-4 py-2 text-xs font-medium text-[#444746] dark:text-[#c4c7c5] hover:bg-black/5 dark:hover:bg-white/10"
+                  className="inline-flex h-9 items-center justify-center rounded-full px-4 text-[12.5px] font-medium text-[#444746] transition-colors duration-150 hover:bg-black/[0.06] active:bg-black/[0.1] dark:text-[#c4c7c5] dark:hover:bg-white/10 dark:active:bg-white/[0.16]"
                 >
                   Ignorer
                 </button>
               </div>
-            </div>
+            )}
           </div>
         )}
       </div>
