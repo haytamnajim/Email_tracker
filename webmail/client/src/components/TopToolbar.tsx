@@ -16,6 +16,7 @@ import {
   MinusSquare,
   Keyboard,
   Check,
+  Paperclip,
 } from 'lucide-react';
 
 export type SplitViewMode = 'none' | 'vertical' | 'horizontal';
@@ -39,6 +40,10 @@ interface TopToolbarProps {
   splitView: SplitViewMode;
   onChangeSplitView: (mode: SplitViewMode) => void;
   onOpenShortcuts: () => void;
+  filterUnreadOnly?: boolean;
+  onToggleUnreadOnly?: () => void;
+  filterAttachmentOnly?: boolean;
+  onToggleAttachmentOnly?: () => void;
 }
 
 export default function TopToolbar({
@@ -60,6 +65,10 @@ export default function TopToolbar({
   splitView,
   onChangeSplitView,
   onOpenShortcuts,
+  filterUnreadOnly = false,
+  onToggleUnreadOnly,
+  filterAttachmentOnly = false,
+  onToggleAttachmentOnly,
 }: TopToolbarProps) {
   const [selectMenuOpen, setSelectMenuOpen] = useState(false);
   const [splitMenuOpen, setSplitMenuOpen] = useState(false);
@@ -185,6 +194,41 @@ export default function TopToolbar({
         >
           <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
         </button>
+
+        {/* Filtres Rapides en 1 Clic */}
+        {selectedCount === 0 && (
+          <div className="hidden sm:flex items-center gap-1.5 ml-2 border-l border-[#e0e2e7] dark:border-[#3c4043] pl-2.5">
+            {onToggleUnreadOnly && (
+              <button
+                type="button"
+                onClick={onToggleUnreadOnly}
+                className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium transition-all ${
+                  filterUnreadOnly
+                    ? 'bg-[#0b57d0] text-white dark:bg-[#a8c7fa] dark:text-[#001d35] shadow-xs'
+                    : 'bg-[#f1f3f4] text-[#444746] hover:bg-[#e8eaed] dark:bg-[#282a2c] dark:text-[#c4c7c5] dark:hover:bg-[#343739]'
+                }`}
+              >
+                <Mail className="h-3 w-3" />
+                <span>Non lus</span>
+              </button>
+            )}
+
+            {onToggleAttachmentOnly && (
+              <button
+                type="button"
+                onClick={onToggleAttachmentOnly}
+                className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium transition-all ${
+                  filterAttachmentOnly
+                    ? 'bg-[#0b57d0] text-white dark:bg-[#a8c7fa] dark:text-[#001d35] shadow-xs'
+                    : 'bg-[#f1f3f4] text-[#444746] hover:bg-[#e8eaed] dark:bg-[#282a2c] dark:text-[#c4c7c5] dark:hover:bg-[#343739]'
+                }`}
+              >
+                <Paperclip className="h-3 w-3" />
+                <span>Pièces jointes</span>
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Actions contextuelles quand des messages sont cochés */}
         {selectedCount > 0 ? (

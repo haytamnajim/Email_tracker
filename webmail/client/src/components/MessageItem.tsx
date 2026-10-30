@@ -82,6 +82,20 @@ export default function MessageItem({
       ? 'py-2 min-h-[42px]'
       : 'py-2.5 min-h-[46px]';
 
+  const emailTag = (() => {
+    const text = `${message.subject} ${message.preview || ''}`.toLowerCase();
+    if (text.includes('urgent') || text.includes('asap') || text.includes('immédiat') || text.includes('important')) {
+      return { label: 'Urgent', color: 'bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300 border-red-200 dark:border-red-900/50' };
+    }
+    if (text.includes('devis') || text.includes('facture') || text.includes('tarif') || text.includes('commande') || text.includes('offre')) {
+      return { label: 'Devis / Offre', color: 'bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 border-blue-200 dark:border-blue-900/50' };
+    }
+    if (text.includes('réunion') || text.includes('rdv') || text.includes('meeting') || text.includes('call') || text.includes('entretien')) {
+      return { label: 'RDV', color: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border-emerald-200 dark:border-emerald-900/50' };
+    }
+    return null;
+  })();
+
   return (
     <div
       onMouseEnter={() => setHovered(true)}
@@ -174,6 +188,12 @@ export default function MessageItem({
         >
           {message.subject || '(sans objet)'}
         </span>
+
+        {emailTag && (
+          <span className={`inline-flex shrink-0 items-center rounded-md border px-1.5 py-0.2 text-[10px] font-semibold tracking-wide ${emailTag.color}`}>
+            {emailTag.label}
+          </span>
+        )}
 
         {message.preview && (
           <span className="text-sm text-[#5f6368] dark:text-[#9aa0a6] truncate hidden md:inline font-normal">

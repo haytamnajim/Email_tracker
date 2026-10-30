@@ -31,6 +31,8 @@ import {
   CheckCircle2,
   CalendarClock,
   User,
+  Copy,
+  Check,
 } from 'lucide-react';
 import type { MessageDetail, Theme } from '../types';
 import { attachmentUrl, generateReplyWithN8n, cancelReplyWithN8n, summarizeEmailWithN8n, detectMeetingWithAI } from '../api';
@@ -162,6 +164,42 @@ export default function MessageReader({
   const [selectedTone, setSelectedTone] = useState<'professionnel' | 'amical' | 'court'>('professionnel');
   const [isGeneratingReply, setIsGeneratingReply] = useState(false);
   const [generationError, setGenerationError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const handleCopyReply = async () => {
+    if (!replyText.trim()) return;
+    try {
+      await navigator.clipboard.writeText(replyText);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // ignore
+    }
+  };
+
+  const smartReplies = useMemo(() => {
+    if (!message) return [];
+    const text = (message.text || message.subject || '').toLowerCase();
+    if (text.includes('disponible') || text.includes('réunion') || text.includes('rdv') || text.includes('créneau')) {
+      return [
+        "👍 C'est d'accord pour ce créneau !",
+        "📅 Je suis disponible, à quelle heure ?",
+        "⏳ Malheureusement indisponible, un autre jour ?",
+      ];
+    }
+    if (text.includes('devis') || text.includes('tarif') || text.includes('prix') || text.includes('projet')) {
+      return [
+        "📋 Bien reçu, je vous prépare une proposition.",
+        "📞 Pouvons-nous échanger par téléphone 10 min ?",
+        "✅ C'est noté, je reviens vers vous rapidement.",
+      ];
+    }
+    return [
+      "👍 Bien reçu, merci pour l'information !",
+      "✅ C'est noté, je m'en occupe dès aujourd'hui.",
+      "🙏 Merci beaucoup pour votre retour.",
+    ];
+  }, [message?.text, message?.subject]);
 
   // États pour le résumé par l'IA
   const [summaryOpen, setSummaryOpen] = useState(false);
@@ -997,34 +1035,56 @@ export default function MessageReader({
       {/* ── Boutons d'action rapides en bas : Répondre / Transférer ── */}
       <div className="p-6 border-t border-[#e0e2e7] dark:border-[#3c4043] bg-white dark:bg-[#141414]">
         {replyMode === null ? (
-          <div className="flex items-center gap-3 flex-wrap">
-            <button
-              type="button"
-              onClick={() => setReplyMode('reply')}
-              className="inline-flex items-center gap-2 rounded-full border border-[#dadce0] dark:border-[#444746] px-6 py-2.5 text-sm font-medium text-[#444746] dark:text-[#c4c7c5] hover:bg-[#f1f3f4] dark:hover:bg-[#282a2c] transition-colors"
-            >
-              <CornerUpLeft className="h-4 w-4" />
-              <span>Répondre</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setReplyMode('forward')}
-              className="inline-flex items-center gap-2 rounded-full border border-[#dadce0] dark:border-[#444746] px-6 py-2.5 text-sm font-medium text-[#444746] dark:text-[#c4c7c5] hover:bg-[#f1f3f4] dark:hover:bg-[#282a2c] transition-colors"
-            >
-              <CornerUpRight className="h-4 w-4" />
-              <span>Transférer</span>
-            </button>
+          <div className="space-y-4">
+            {/* Smart Reply Chips rapides façon Gmail */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-[11px] font-semibold text-[#5f6368] dark:text-[#9aa0a6] flex items-center gap-1 mr-1">
+                <Sparkles className="h-3 w-3 text-[#0b57d0] dark:text-[#a8c7fa]" /> Réponse rapide :
+              </span>
+              {smartReplies.map((replyOption, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => {
+                    setReplyMode('reply');
+                    setReplyText(replyOption);
+                  }}
+                  className="rounded-full border border-[#dadce0] dark:border-[#444746] bg-[#f8f9fa] dark:bg-[#202124] px-3.5 py-1.5 text-xs text-[#1f1f1f] dark:text-[#e8eaed] hover:border-[#0b57d0] hover:bg-[#eaf1fb] dark:hover:border-[#a8c7fa] dark:hover:bg-[#004a77]/30 transition-all cursor-pointer shadow-xs active:scale-[0.98]"
+                >
+                  {replyOption}
+                </button>
+              ))}
+            </div>
 
-            {/* Bouton Suggérer une réponse (style Gmail pur, 1 clic direct) */}
-            <button
-              type="button"
-              onClick={() => handleDirectGenerateReply()}
-              disabled={isGeneratingReply}
-              className="inline-flex items-center gap-2 rounded-full border border-[#dadce0] dark:border-[#444746] px-5 py-2.5 text-sm font-medium text-[#0b57d0] dark:text-[#a8c7fa] hover:bg-[#eaf1fb] dark:hover:bg-[#004a77]/30 transition-colors cursor-pointer disabled:opacity-60"
-            >
-              <Sparkles className={`h-4 w-4 ${isGeneratingReply ? 'animate-spin' : ''}`} />
-              <span>{isGeneratingReply ? 'Génération en cours…' : 'Générer une réponse'}</span>
-            </button>
+            <div className="flex items-center gap-3 flex-wrap">
+              <button
+                type="button"
+                onClick={() => setReplyMode('reply')}
+                className="inline-flex items-center gap-2 rounded-full border border-[#dadce0] dark:border-[#444746] px-6 py-2.5 text-sm font-medium text-[#444746] dark:text-[#c4c7c5] hover:bg-[#f1f3f4] dark:hover:bg-[#282a2c] transition-colors"
+              >
+                <CornerUpLeft className="h-4 w-4" />
+                <span>Répondre</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setReplyMode('forward')}
+                className="inline-flex items-center gap-2 rounded-full border border-[#dadce0] dark:border-[#444746] px-6 py-2.5 text-sm font-medium text-[#444746] dark:text-[#c4c7c5] hover:bg-[#f1f3f4] dark:hover:bg-[#282a2c] transition-colors"
+              >
+                <CornerUpRight className="h-4 w-4" />
+                <span>Transférer</span>
+              </button>
+
+              {/* Bouton Suggérer une réponse (style Gmail pur, 1 clic direct) */}
+              <button
+                type="button"
+                onClick={() => handleDirectGenerateReply()}
+                disabled={isGeneratingReply}
+                className="inline-flex items-center gap-2 rounded-full border border-[#dadce0] dark:border-[#444746] px-5 py-2.5 text-sm font-medium text-[#0b57d0] dark:text-[#a8c7fa] hover:bg-[#eaf1fb] dark:hover:bg-[#004a77]/30 transition-colors cursor-pointer disabled:opacity-60"
+              >
+                <Sparkles className={`h-4 w-4 ${isGeneratingReply ? 'animate-spin' : ''}`} />
+                <span>{isGeneratingReply ? 'Génération en cours…' : 'Générer une réponse'}</span>
+              </button>
+            </div>
           </div>
         ) : (
           /* Bloc de réponse en ligne interactif officiel Gmail */
@@ -1041,15 +1101,38 @@ export default function MessageReader({
                 </span>
               </span>
 
-              <button
-                type="button"
-                onClick={() => handleDirectGenerateReply()}
-                disabled={isGeneratingReply}
-                className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-[#dadce0] px-3 py-1 text-[11px] font-medium text-[#0b57d0] transition-colors duration-150 hover:bg-[#eaf1fb] disabled:opacity-50 dark:border-[#444746] dark:text-[#a8c7fa] dark:hover:bg-[#004a77]/30"
-              >
-                <Sparkles className={`h-3.5 w-3.5 ${isGeneratingReply ? 'animate-spin' : ''}`} />
-                <span>{isGeneratingReply ? 'Génération…' : 'Régénérer'}</span>
-              </button>
+              <div className="flex items-center gap-2">
+                {replyText.trim() && (
+                  <button
+                    type="button"
+                    onClick={handleCopyReply}
+                    title="Copier le texte dans le presse-papiers"
+                    className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-[#dadce0] px-3 py-1 text-[11px] font-medium text-[#444746] transition-colors duration-150 hover:bg-[#f1f3f4] dark:border-[#444746] dark:text-[#c4c7c5] dark:hover:bg-[#282a2c]"
+                  >
+                    {copied ? (
+                      <>
+                        <Check className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                        <span className="text-emerald-600 dark:text-emerald-400 font-semibold">Copié !</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="h-3.5 w-3.5" />
+                        <span>Copier</span>
+                      </>
+                    )}
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => handleDirectGenerateReply()}
+                  disabled={isGeneratingReply}
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-[#dadce0] px-3 py-1 text-[11px] font-medium text-[#0b57d0] transition-colors duration-150 hover:bg-[#eaf1fb] disabled:opacity-50 dark:border-[#444746] dark:text-[#a8c7fa] dark:hover:bg-[#004a77]/30"
+                >
+                  <Sparkles className={`h-3.5 w-3.5 ${isGeneratingReply ? 'animate-spin' : ''}`} />
+                  <span>{isGeneratingReply ? 'Génération…' : 'Régénérer'}</span>
+                </button>
+              </div>
             </div>
 
             {/* Sélecteur de ton — chips Material 3, une teinte par ton */}

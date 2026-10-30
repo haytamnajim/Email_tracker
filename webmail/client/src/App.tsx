@@ -80,6 +80,9 @@ export default function App() {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
+  const [filterUnreadOnly, setFilterUnreadOnly] = useState(false);
+  const [filterAttachmentOnly, setFilterAttachmentOnly] = useState(false);
+
   // Détection dossier virtuel vs IMAP
   const isVirtualStarred = folderId === 'STARRED';
   const isVirtualImportant = folderId === 'IMPORTANT';
@@ -92,14 +95,12 @@ export default function App() {
       from: advancedFilters.from,
       to: advancedFilters.to,
       subject: advancedFilters.subject,
-      unread: false,
+      unread: filterUnreadOnly,
       flagged: isVirtualStarred,
-      // `has:attachment` tapé dans le panneau de filtres n'était jamais interprété :
-      // il se sert désormais du paramètre `attachments` que l'API acceptait déjà.
-      attachments: advancedFilters.hasAttachment,
+      attachments: filterAttachmentOnly || advancedFilters.hasAttachment,
       sort: 'desc' as const,
     }),
-    [search, advancedFilters, isVirtualStarred],
+    [search, advancedFilters, isVirtualStarred, filterUnreadOnly, filterAttachmentOnly],
   );
 
   const { folders, loading: foldersLoading, reload: reloadFolders } = useFolders(true);
@@ -477,46 +478,60 @@ export default function App() {
   }, [checkedUids, addToast]);
 
   // Envoi d'email : SMTP direct prioritaire, n8n en repli
+  const pendingSendsRef = useRef<Map<string, number>>(new Map());
+
+  // Envoi d'email avec buffer d'annulation (Undo Send façon Gmail pendant 5s)
   const handleSendEmail = useCallback(
     async (to: string, subject: string, body: string, messageUid?: number, folder?: string): Promise<boolean> => {
-      // 1) Essaye SMTP direct (fonctionne sans ngrok)
-      if (smtpAvailable && smtpWorking) {
-        try {
-          const res = await sendEmailWithSmtp({ to, subject, body, messageUid, folder });
-          if (res.success) {
-            addToast(`Message "${subject || 'Sans objet'}" envoyé (SMTP).`);
-            return true;
+      const sendId = Date.now().toString() + Math.random().toString(36).slice(2, 6);
+
+      const performSend = async () => {
+        pendingSendsRef.current.delete(sendId);
+        // 1) Essaye SMTP direct
+        if (smtpAvailable && smtpWorking) {
+          try {
+            const res = await sendEmailWithSmtp({ to, subject, body, messageUid, folder });
+            if (res.success) return true;
+          } catch (err) {
+            console.warn('[SMTP send error, falling back to n8n]', err);
           }
-          // Si SMTP échoue, on passe au fallback n8n sans interrompre.
-          console.warn('[SMTP send failed, falling back to n8n]', res.error);
-        } catch (err) {
-          console.warn('[SMTP send error, falling back to n8n]', err);
         }
-      }
 
-      // 2) Fallback : webhook n8n (nécessite ngrok)
-      const storedSendWebhook = localStorage.getItem('n8n_send_webhook_url') || undefined;
-      try {
-        const res = await sendEmailWithN8n({
-          sendWebhookUrl: storedSendWebhook,
-          to,
-          subject,
-          body,
-          messageUid,
-        });
-
-        if (res.success) {
-          addToast(`Message "${subject || 'Sans objet'}" envoyé (n8n).`);
-          return true;
-        } else {
-          addToast(`Échec de l'envoi : ${res.error || 'Erreur n8n'}`);
+        // 2) Fallback : webhook n8n
+        const storedSendWebhook = localStorage.getItem('n8n_send_webhook_url') || undefined;
+        try {
+          const res = await sendEmailWithN8n({
+            sendWebhookUrl: storedSendWebhook,
+            to,
+            subject,
+            body,
+            messageUid,
+          });
+          return res.success;
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : String(err);
+          addToast(`Erreur d'envoi n8n : ${msg}`);
           return false;
         }
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : String(err);
-        addToast(`Erreur d'envoi n8n : ${msg}`);
-        return false;
-      }
+      };
+
+      const timerId = window.setTimeout(() => {
+        void performSend();
+      }, 5000);
+
+      pendingSendsRef.current.set(sendId, timerId);
+
+      // Toast avec bouton Annuler officiel Gmail
+      addToast('Message envoyé.', 'Annuler', () => {
+        const tid = pendingSendsRef.current.get(sendId);
+        if (tid) {
+          window.clearTimeout(tid);
+          pendingSendsRef.current.delete(sendId);
+          addToast('Envoi annulé.');
+        }
+      });
+
+      return true;
     },
     [addToast, smtpAvailable, smtpWorking],
   );
@@ -648,6 +663,10 @@ export default function App() {
     splitView,
     onChangeSplitView: setSplitView,
     onOpenShortcuts: () => setShortcutsOpen(true),
+    filterUnreadOnly,
+    onToggleUnreadOnly: () => setFilterUnreadOnly((prev) => !prev),
+    filterAttachmentOnly,
+    onToggleAttachmentOnly: () => setFilterAttachmentOnly((prev) => !prev),
   };
 
   // Props pour le lecteur de message
@@ -858,11 +877,13 @@ export default function App() {
                 />
               )}
               {newCount > 0 && (
-                <button type="button" onClick={() => { clearNewCount(); void reloadMessages(); }}
-                  className="mx-3 mb-1 flex items-center justify-center gap-2 rounded-full bg-[#0b57d0] dark:bg-[#a8c7fa] text-white dark:text-[#001d35] py-2 text-xs font-semibold shadow-md animate-banner hover:bg-[#0842a0] transition-colors">
-                  <Bell className="h-3.5 w-3.5 shrink-0" strokeWidth={2.5} aria-hidden="true" />
-                  {newCount} nouveau{newCount > 1 ? 'x' : ''} email{newCount > 1 ? 's' : ''} — Cliquez pour actualiser
-                </button>
+                <NewEmailsBanner
+                  count={newCount}
+                  onRefresh={() => {
+                    clearNewCount();
+                    void reloadMessages();
+                  }}
+                />
               )}
               {refreshing && !messagesLoading && (
                 <div className="flex items-center justify-center gap-1.5 py-1 text-[10px] text-[#5f6368] dark:text-[#9aa0a6]">
