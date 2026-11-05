@@ -224,7 +224,7 @@ export default function MessageReader({
   const [meetingModalOpen, setMeetingModalOpen] = useState(false);
   const [meetingConfirmed, setMeetingConfirmed] = useState(false);
   const [meetingDate, setMeetingDate] = useState('');
-  const [meetingTime, setMeetingTime] = useState('10:00');
+  const [meetingTime, setMeetingTime] = useState('');
   const [meetingDuration, setMeetingDuration] = useState('60');
   const [meetingTitle, setMeetingTitle] = useState('');
   const [meetingDetected, setMeetingDetected] = useState(false);
@@ -248,7 +248,7 @@ export default function MessageReader({
     setMeetingModalOpen(false);
     setMeetingConfirmed(false);
     setMeetingDate('');
-    setMeetingTime('10:00');
+    setMeetingTime('');
     setMeetingDuration('60');
     setMeetingTitle(message?.subject ?? '');
   }, [message?.uid]);
