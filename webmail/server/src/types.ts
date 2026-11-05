@@ -89,3 +89,13 @@ export interface AttachmentFile {
   contentType: string;
   content: Buffer;
 }
+
+/** Message envoyé ancien dont le destinataire n'a pas encore répondu. */
+export interface FollowupCandidate {
+  uid: number;
+  folder: string;
+  to: Address;
+  subject: string;
+  date: string;
+  daysSince: number;
+}

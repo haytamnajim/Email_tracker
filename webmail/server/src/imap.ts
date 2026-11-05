@@ -10,6 +10,7 @@ import type {
   AttachmentFile,
   AttachmentMeta,
   Folder,
+  FollowupCandidate,
   MessageDetail,
   MessageQuery,
   MessageSummary,
@@ -392,5 +393,121 @@ export async function imapGetAttachment(
       contentType: attachment.contentType,
       content: attachment.content,
     };
+  });
+}
+
+/** Adresses automatiques : une relance n'aurait aucun destinataire humain. */
+const AUTOMATED_RECIPIENT_RE =
+  /(no-?reply|do-?not-?reply|notifications?@|newsletter|mailer-daemon|bounce|calendar\.|automated)/i;
+
+/**
+ * Liste les messages envoyés assez anciens pour mériter une relance et dont
+ * le destinataire n'a rien envoyé depuis. Lecture seule : aucun drapeau ni
+ * libellé IMAP n'est modifié.
+ */
+export async function imapListFollowups(
+  sentFolder: string,
+  days: number,
+  limit: number,
+): Promise<FollowupCandidate[]> {
+  return run(async (imap) => {
+    const cutoff = Date.now() - days * 86_400_000;
+    const self = config.imap.user.toLowerCase();
+
+    await imap.mailboxOpen(sentFolder, { readOnly: true });
+    const found = await imap.search({ all: true }, { uid: true });
+    const uids = (Array.isArray(found) ? found : []).slice(-80);
+
+    const candidates: Array<{
+      uid: number;
+      to: Address;
+      subject: string;
+      date: Date;
+    }> = [];
+
+    if (uids.length > 0) {
+      for await (const message of imap.fetch(
+        uids,
+        { uid: true, envelope: true, internalDate: true },
+        { uid: true },
+      )) {
+        const date = message.internalDate ? new Date(message.internalDate) : new Date();
+        if (date.getTime() > cutoff) continue;
+
+        const recipients = (message.envelope?.to ?? [])
+          .map((entry) => ({ name: entry.name ?? '', address: entry.address ?? '' }))
+          .filter(
+            (entry) =>
+              Boolean(entry.address) &&
+              entry.address.toLowerCase() !== self &&
+              !AUTOMATED_RECIPIENT_RE.test(entry.address),
+          );
+        if (recipients.length === 0) continue;
+
+        candidates.push({
+          uid: message.uid,
+          to: recipients[0],
+          subject: message.envelope?.subject ?? '(sans objet)',
+          date,
+        });
+      }
+    }
+
+    candidates.sort((a, b) => b.date.getTime() - a.date.getTime());
+
+    // Un même fil peut contenir plusieurs messages envoyés : on ne propose
+    // qu'une relance par destinataire et par objet, en gardant le plus récent.
+    const unique = new Map<string, (typeof candidates)[number]>();
+    for (const candidate of candidates) {
+      const subjectKey = candidate.subject
+        .replace(/^(?:(?:re|fwd?)\s*:\s*)+/i, '')
+        .trim()
+        .toLowerCase();
+      const key = `${(candidate.to.address ?? '').toLowerCase()}|${subjectKey}`;
+      if (!unique.has(key)) unique.set(key, candidate);
+    }
+
+    const selected = [...unique.values()].slice(0, limit);
+    if (selected.length === 0) return [];
+
+    await imap.mailboxOpen('INBOX', { readOnly: true });
+    const result: FollowupCandidate[] = [];
+
+    for (const candidate of selected) {
+      const since = new Date(candidate.date);
+      since.setDate(since.getDate() - 1);
+      const replyUids = await imap.search(
+        { from: candidate.to.address, since },
+        { uid: true },
+      );
+
+      let replied = false;
+      if (Array.isArray(replyUids) && replyUids.length > 0) {
+        for await (const reply of imap.fetch(
+          replyUids.slice(-10),
+          { uid: true, internalDate: true },
+          { uid: true },
+        )) {
+          const replyDate = reply.internalDate ? new Date(reply.internalDate) : null;
+          if (replyDate && replyDate.getTime() > candidate.date.getTime()) {
+            replied = true;
+            break;
+          }
+        }
+      }
+
+      if (!replied) {
+        result.push({
+          uid: candidate.uid,
+          folder: sentFolder,
+          to: candidate.to,
+          subject: candidate.subject,
+          date: candidate.date.toISOString(),
+          daysSince: Math.floor((Date.now() - candidate.date.getTime()) / 86_400_000),
+        });
+      }
+    }
+
+    return result;
   });
 }

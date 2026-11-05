@@ -1,4 +1,4 @@
-import type { Folder, MessageDetail, MessageQuery, MessagesPage } from '../types';
+import type { Address, Folder, MessageDetail, MessageQuery, MessagesPage } from '../types';
 
 const BASE = '/api';
 
@@ -290,6 +290,33 @@ export function markMessagesFlagged(uids: number[], folder: string, flagged: boo
     headers: { 'Content-Type': 'application/json' },
     body: jsonBody({ uids, folder, value: flagged }),
   });
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Relances : messages envoyés restés sans réponse
+// ─────────────────────────────────────────────────────────────────
+
+export interface FollowupCandidate {
+  uid: number;
+  folder: string;
+  to: Address;
+  subject: string;
+  date: string;
+  daysSince: number;
+}
+
+export interface FollowupsResponse {
+  days: number;
+  sentFolder: string | null;
+  candidates: FollowupCandidate[];
+  warning?: string;
+}
+
+/** Récupère les messages envoyés sans réponse depuis au moins `days` jours. */
+export function getFollowups(days = 3, limit = 10): Promise<FollowupsResponse> {
+  return request<FollowupsResponse>(
+    `${BASE}/followups?days=${encodeURIComponent(days)}&limit=${encodeURIComponent(limit)}`,
+  );
 }
 
 

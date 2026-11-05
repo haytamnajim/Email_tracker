@@ -138,6 +138,13 @@ const REPLY_TONES = [
   },
 ] as const;
 
+/** Date du jour au format AAAA-MM-JJ, dans le fuseau local (et non UTC). */
+function todayIsoDate(): string {
+  const now = new Date();
+  const local = new Date(now.getTime() - now.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 10);
+}
+
 /** « mardi 10 novembre à 14:00 » à partir de AAAA-MM-JJ + HH:MM. */
 function formatMeetingSlot(date: string, time: string): string {
   if (!date) return '';
@@ -247,7 +254,7 @@ export default function MessageReader({
     setSummaryError(null);
     setMeetingModalOpen(false);
     setMeetingConfirmed(false);
-    setMeetingDate('');
+    setMeetingDate(todayIsoDate());
     setMeetingTime('');
     setMeetingDuration('60');
     setMeetingTitle(message?.subject ?? '');
@@ -759,7 +766,7 @@ export default function MessageReader({
                     type="date"
                     value={meetingDate}
                     onChange={(e) => setMeetingDate(e.target.value)}
-                    min={new Date().toISOString().split('T')[0]}
+                    min={todayIsoDate()}
                     className="w-full rounded-xl border border-[#dadce0] dark:border-[#444746] bg-[#f8f9fa] dark:bg-[#141414] px-3 py-2 text-sm text-[#1f1f1f] dark:text-[#e8eaed] outline-none focus:border-[#0b57d0] dark:focus:border-[#a8c7fa] transition-colors"
                   />
                 </div>

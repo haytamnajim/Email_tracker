@@ -19,6 +19,8 @@ import {
   Paperclip,
 } from 'lucide-react';
 
+import type { EmailClass } from '../utils/classification';
+
 export type SplitViewMode = 'none' | 'vertical' | 'horizontal';
 
 interface TopToolbarProps {
@@ -44,6 +46,8 @@ interface TopToolbarProps {
   onToggleUnreadOnly?: () => void;
   filterAttachmentOnly?: boolean;
   onToggleAttachmentOnly?: () => void;
+  classificationFilter?: EmailClass | 'all';
+  onChangeClassificationFilter?: (value: EmailClass | 'all') => void;
 }
 
 export default function TopToolbar({
@@ -69,6 +73,8 @@ export default function TopToolbar({
   onToggleUnreadOnly,
   filterAttachmentOnly = false,
   onToggleAttachmentOnly,
+  classificationFilter = 'all',
+  onChangeClassificationFilter,
 }: TopToolbarProps) {
   const [selectMenuOpen, setSelectMenuOpen] = useState(false);
   const [splitMenuOpen, setSplitMenuOpen] = useState(false);
@@ -226,6 +232,29 @@ export default function TopToolbar({
                 <Paperclip className="h-3 w-3" />
                 <span>Pièces jointes</span>
               </button>
+            )}
+
+            {onChangeClassificationFilter && (
+              <>
+                <label htmlFor="classification-filter" className="sr-only">
+                  Classement des emails
+                </label>
+                <select
+                  id="classification-filter"
+                  value={classificationFilter}
+                  onChange={(event) =>
+                    onChangeClassificationFilter(event.target.value as EmailClass | 'all')
+                  }
+                  className="h-6 cursor-pointer rounded-full border border-[#dadce0] bg-[#f1f3f4] px-2 text-[11px] font-medium text-[#444746] outline-none hover:bg-[#e8eaed] dark:border-[#444746] dark:bg-[#282a2c] dark:text-[#c4c7c5] dark:hover:bg-[#343739]"
+                >
+                  <option value="all">Tous les classements</option>
+                  <option value="urgent">Urgent</option>
+                  <option value="meeting">Réunion</option>
+                  <option value="invoice">Facture</option>
+                  <option value="action">Action</option>
+                  <option value="newsletter">Newsletter</option>
+                </select>
+              </>
             )}
           </div>
         )}

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   X,
   Minus,
@@ -49,6 +49,19 @@ export default function ComposeModal({
   const [isSending, setIsSending] = useState(false);
   const [sendPhase, setSendPhase] = useState<SendPhase>('idle');
   const [sendError, setSendError] = useState<string | null>(null);
+
+  // La fenêtre reste montée entre deux ouvertures : on ne synchronise que
+  // lorsqu'un brouillon préparé change (relance), pas à chaque réouverture.
+  // Un message commencé puis fermé est donc conservé, comme dans Gmail.
+  useEffect(() => {
+    setTo(initialTo);
+    setSubject(initialSubject);
+    setBody(initialBody);
+    setCc('');
+    setBcc('');
+    setSendError(null);
+    setSendPhase('idle');
+  }, [initialTo, initialSubject, initialBody]);
 
   if (!isOpen) return null;
 

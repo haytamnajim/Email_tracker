@@ -5,8 +5,8 @@ import {
   demoListFolders,
   demoListMessages,
 } from './demoData.ts';
-import { imapGetAttachment, imapGetMessage, imapListFolders, imapListMessages } from './imap.ts';
-import type { MessageQuery } from './types.ts';
+import { imapGetAttachment, imapGetMessage, imapListFolders, imapListFollowups, imapListMessages } from './imap.ts';
+import type { FollowupCandidate, MessageQuery } from './types.ts';
 
 /**
  * Façade unique consommée par les routes.
@@ -20,4 +20,6 @@ export const service = {
     config.demoMode ? demoGetMessage(uid, folder) : imapGetMessage(uid, folder),
   getAttachment: (uid: number, index: number, folder: string) =>
     config.demoMode ? demoGetAttachment(uid, index, folder) : imapGetAttachment(uid, index, folder),
+  listFollowups: (sentFolder: string, days: number, limit: number): Promise<FollowupCandidate[]> =>
+    config.demoMode ? Promise.resolve([]) : imapListFollowups(sentFolder, days, limit),
 };

@@ -29,6 +29,7 @@ interface SidebarProps {
   navOpen: boolean;
   onCompose: () => void;
   starredCount?: number;
+  onOpenFollowups?: () => void;
 }
 
 /**
@@ -135,6 +136,7 @@ export default function Sidebar({
   navOpen,
   onCompose,
   starredCount = 0,
+  onOpenFollowups,
 }: SidebarProps) {
   const [showMore, setShowMore] = useState(false);
   const [showLabels, setShowLabels] = useState(true);
@@ -265,6 +267,17 @@ export default function Sidebar({
             }}
           />
         ))}
+
+        {onOpenFollowups && (
+          <NavItem
+            icon={RefreshCw}
+            label="Relances"
+            unread={0}
+            collapsed={collapsed}
+            active={false}
+            onClick={onOpenFollowups}
+          />
+        )}
 
         {/* ── Bloc « Plus » + Libellés : se replie avec le sidebar ── */}
         <div

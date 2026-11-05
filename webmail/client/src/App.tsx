@@ -10,6 +10,7 @@ import type { DisplayDensity } from './components/MessageItem';
 import MessageReader from './components/MessageReader';
 import RightSidebar from './components/RightSidebar';
 import ComposeModal from './components/ComposeModal';
+import FollowupsPanel from './components/FollowupsPanel';
 import NewEmailsBanner from './components/NewEmailsBanner';
 import SettingsDrawer from './components/SettingsDrawer';
 import ShortcutsModal from './components/ShortcutsModal';
@@ -21,7 +22,10 @@ import { useMessage } from './hooks/useMessage';
 import { useMessages } from './hooks/useMessages';
 import { useTheme } from './hooks/useTheme';
 import { categorizeMessage, countByCategory } from './utils/categories';
+import { classifyEmail } from './utils/classification';
+import type { EmailClass } from './utils/classification';
 import { sendEmailWithN8n, sendEmailWithSmtp, getSmtpStatus, markMessageRead, markMessageFlagged } from './api';
+import type { FollowupCandidate } from './api';
 import { EMPTY_ADVANCED_FILTERS } from './types';
 import type { AdvancedFilters } from './types';
 
@@ -43,6 +47,8 @@ export default function App() {
 
   // Modales & Tiroirs
   const [composeOpen, setComposeOpen] = useState(false);
+  const [followupsOpen, setFollowupsOpen] = useState(false);
+  const [composeDraft, setComposeDraft] = useState({ to: '', subject: '', body: '' });
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
 
@@ -79,8 +85,36 @@ export default function App() {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
+  const openCompose = useCallback(() => {
+    setComposeDraft({ to: '', subject: '', body: '' });
+    setComposeOpen(true);
+  }, []);
+
+  const handlePrepareFollowup = useCallback(
+    (candidate: FollowupCandidate) => {
+      const greeting = candidate.to.name?.trim()
+        ? `Bonjour ${candidate.to.name.trim()},`
+        : 'Bonjour,';
+      const sentDate = new Intl.DateTimeFormat('fr-FR', {
+        day: 'numeric',
+        month: 'long',
+      }).format(new Date(candidate.date));
+      const originalSubject = candidate.subject || '(sans objet)';
+
+      setComposeDraft({
+        to: candidate.to.address ?? '',
+        subject: originalSubject.startsWith('Re:') ? originalSubject : `Re: ${originalSubject}`,
+        body: `${greeting}\n\nJe me permets de revenir vers vous concernant mon message du ${sentDate} au sujet de « ${originalSubject} ».\n\nAvez-vous pu en prendre connaissance ? Je reste disponible si vous avez besoin de précisions.\n\nBien cordialement,`,
+      });
+      setComposeOpen(true);
+      addToast('Relance prête : relis et modifie le texte avant l’envoi.');
+    },
+    [addToast],
+  );
+
   const [filterUnreadOnly, setFilterUnreadOnly] = useState(false);
   const [filterAttachmentOnly, setFilterAttachmentOnly] = useState(false);
+  const [classificationFilter, setClassificationFilter] = useState<EmailClass | 'all'>('all');
 
   // Détection dossier virtuel vs IMAP
   const isVirtualStarred = folderId === 'STARRED';
@@ -234,9 +268,12 @@ export default function App() {
 
   // ── Filtrage par catégorie Gmail (#9) : uniquement en boîte de réception ──
   const visibleItems = useMemo(() => {
-    if (!isInbox) return items;
-    return items.filter((item) => categorizeMessage(item) === activeCategory);
-  }, [items, isInbox, activeCategory]);
+    const inCategory = !isInbox
+      ? items
+      : items.filter((item) => categorizeMessage(item) === activeCategory);
+    if (classificationFilter === 'all') return inCategory;
+    return inCategory.filter((item) => classifyEmail(item).id === classificationFilter);
+  }, [items, isInbox, activeCategory, classificationFilter]);
 
   // Vrais compteurs par catégorie pour les badges des onglets (#9)
   const categoryCounts = useMemo(() => countByCategory(items), [items]);
@@ -561,7 +598,7 @@ export default function App() {
 
       if (e.key === 'c') {
         e.preventDefault();
-        setComposeOpen(true);
+        openCompose();
       } else if (e.key === '?') {
         e.preventDefault();
         setShortcutsOpen((prev) => !prev);
@@ -591,6 +628,7 @@ export default function App() {
     handleToggleStar,
     handleArchive,
     handleDelete,
+    openCompose,
   ]);
 
   // Props pour la liste de messages (filtrée par catégorie)
@@ -628,11 +666,15 @@ export default function App() {
     onRetry: reloadMessages,
     emptyTitle: search.trim()
       ? 'Aucun résultat trouvé'
+      : classificationFilter !== 'all'
+      ? 'Aucun message dans ce classement'
       : isInbox && activeCategory !== 'primary'
       ? 'Aucun message dans cette catégorie'
       : 'Votre boîte de réception est vide',
     emptyDescription: search.trim()
       ? 'Aucun message ne correspond à vos termes de recherche.'
+      : classificationFilter !== 'all'
+      ? 'Aucun email ne correspond à ce classement pour le moment.'
       : isInbox && activeCategory !== 'primary'
       ? 'Les messages de cette catégorie apparaîtront ici lorsqu\'ils arriveront.'
       : 'Aucun nouveau message pour le moment.',
@@ -666,6 +708,8 @@ export default function App() {
     onToggleUnreadOnly: () => setFilterUnreadOnly((prev) => !prev),
     filterAttachmentOnly,
     onToggleAttachmentOnly: () => setFilterAttachmentOnly((prev) => !prev),
+    classificationFilter,
+    onChangeClassificationFilter: setClassificationFilter,
   };
 
   // Props pour le lecteur de message
@@ -728,8 +772,9 @@ export default function App() {
           onRefresh={reloadFolders}
           refreshing={foldersLoading}
           navOpen={navOpen}
-          onCompose={() => setComposeOpen(true)}
+          onCompose={openCompose}
           starredCount={starredUids.size}
+          onOpenFollowups={() => setFollowupsOpen(true)}
         />
 
         {/* ── Sélecteur mobile (écrans < 768px) ── */}
@@ -748,7 +793,7 @@ export default function App() {
             </select>
             <button
               type="button"
-              onClick={() => setComposeOpen(true)}
+              onClick={openCompose}
               className="rounded-full bg-[#c2e7ff] text-[#001d35] px-3 py-1 text-xs font-semibold"
             >
               Rédiger
@@ -903,6 +948,16 @@ export default function App() {
         isOpen={composeOpen}
         onClose={() => setComposeOpen(false)}
         onSend={handleSendEmail}
+        initialTo={composeDraft.to}
+        initialSubject={composeDraft.subject}
+        initialBody={composeDraft.body}
+      />
+
+      {/* Panneau des relances (lecture seule, préparation manuelle) */}
+      <FollowupsPanel
+        isOpen={followupsOpen}
+        onClose={() => setFollowupsOpen(false)}
+        onPrepare={handlePrepareFollowup}
       />
 
       {/* ── 5. Tiroir de configuration rapide (Settings) ── */}
