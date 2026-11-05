@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import type { Request, Response } from 'express';
 import { config } from '../config.ts';
+import { detectMeetingLocally } from '../meetingDetect.ts';
 
 export const n8nRouter = Router();
 
@@ -523,6 +524,9 @@ interface DetectMeetingResult {
   confidence: number;   // 0.0 – 1.0
   reason: string;
   suggestedTitle?: string;
+  /** Créneau proposé, format AAAA-MM-JJ / HH:MM (compatible champs HTML). */
+  suggestedDate?: string;
+  suggestedTime?: string;
   source: 'n8n' | 'fallback';
 }
 
@@ -536,18 +540,10 @@ n8nRouter.post('/detect-meeting', async (req: Request, res: Response) => {
 
   const targetUrl = (webhookUrl || config.n8nDetectMeetingWebhookUrl || config.n8nWebhookUrl || '').trim();
 
-  // ── Fallback si aucun webhook configuré : détection locale simple ──
+  // ── Repli immédiat si aucun webhook n'est configuré ──
   if (!targetUrl) {
-    const haystack = `${message.subject ?? ''} ${message.text ?? ''}`.toLowerCase();
-    const MEETING_RE = /\b(meeting|r[eé]union|rendez-vous|rendez vous|rdv|appel|call|zoom|teams|google meet|webinar|webinaire|conf[eé]rence|entretien|interview|discussion|d[eé]mo|pr[eé]sentation|visio)\b/;
-    const matched = MEETING_RE.test(haystack);
     const result: DetectMeetingResult = {
-      isMeeting: matched,
-      confidence: matched ? 0.6 : 0.05,
-      reason: matched
-        ? 'Détection locale : mots-clés de réunion trouvés dans le sujet ou le corps.'
-        : "Aucun mot-clé de réunion détecté (analyse locale — configurez N8N_DETECT_MEETING_WEBHOOK_URL pour l'IA).",
-      suggestedTitle: matched ? message.subject : undefined,
+      ...detectMeetingLocally(message),
       source: 'fallback',
     };
     res.json({ success: true, ...result });
@@ -600,6 +596,13 @@ Réponds UNIQUEMENT avec ce JSON (pas de markdown) :
     clearTimeout(timeout);
 
     if (!n8nResponse.ok) {
+      if (n8nResponse.status === 404) {
+        // n8n renvoie 404 quand le workflow n'est pas actif : le webhook
+        // n'est alors tout simplement pas enregistré.
+        throw new Error(
+          "Workflow n8n introuvable (404) : activez-le dans n8n (interrupteur « Active ») et vérifiez que le nœud Webhook est en mode production.",
+        );
+      }
       throw new Error(`Le webhook n8n a renvoyé l'erreur ${n8nResponse.status}`);
     }
 
@@ -624,8 +627,16 @@ Réponds UNIQUEMENT avec ce JSON (pas de markdown) :
       try { parsed = JSON.parse(cleaned); } catch { /* fallback */ }
     }
 
+    const localDetection = detectMeetingLocally(message);
+    const isMeeting = Boolean(parsed.isMeeting ?? parsed.is_meeting ?? false);
+
+    // Si l'IA tranche pour l'absence de réunion, aucun créneau n'est renvoyé :
+    // un créneau sans réunion n'a rien à préremplir dans l'interface.
+    const dateFromAi = parsed.suggestedDate ?? parsed.suggested_date;
+    const timeFromAi = parsed.suggestedTime ?? parsed.suggested_time;
+
     const result: DetectMeetingResult = {
-      isMeeting: Boolean(parsed.isMeeting ?? parsed.is_meeting ?? false),
+      isMeeting,
       confidence: Number(parsed.confidence ?? 0.7),
       reason: String(parsed.reason ?? 'Analyse IA n8n effectuée.'),
       suggestedTitle: parsed.suggestedTitle
@@ -633,6 +644,18 @@ Réponds UNIQUEMENT avec ce JSON (pas de markdown) :
         : parsed.suggested_title
         ? String(parsed.suggested_title)
         : message.subject,
+      // L'IA ne renvoie pas toujours le créneau : on le complète par
+      // l'extraction locale, sans écraser ce qu'elle a explicitement fourni.
+      suggestedDate: isMeeting
+        ? dateFromAi
+          ? String(dateFromAi)
+          : localDetection.suggestedDate
+        : undefined,
+      suggestedTime: isMeeting
+        ? timeFromAi
+          ? String(timeFromAi)
+          : localDetection.suggestedTime
+        : undefined,
       source: 'n8n',
     };
 
@@ -641,18 +664,17 @@ Réponds UNIQUEMENT avec ce JSON (pas de markdown) :
     const errorMsg = err instanceof Error ? err.message : String(err);
     console.error('[detect-meeting error]', errorMsg);
 
-    // Fallback local en cas d'erreur réseau
-    const haystack = `${message.subject ?? ''} ${message.text ?? ''}`.toLowerCase();
-    const MEETING_RE = /\b(meeting|r[eé]union|rendez-vous|rdv|appel|call|zoom|teams|google meet|webinar|entretien|visio)\b/;
-    const matched = MEETING_RE.test(haystack);
-    res.json({
-      success: false,
-      isMeeting: matched,
-      confidence: matched ? 0.5 : 0.05,
-      reason: `Erreur IA (${errorMsg}) — détection locale de secours utilisée.`,
-      suggestedTitle: matched ? message.subject : undefined,
+    // Le workflow n8n est injoignable ou inactif : on répond quand même,
+    // avec l'analyse locale enrichie du créneau détecté.
+    const cause = errorMsg.includes('404')
+      ? 'n8n : workflow inactif (404)'
+      : 'n8n indisponible';
+
+    const result: DetectMeetingResult = {
+      ...detectMeetingLocally(message, cause),
       source: 'fallback',
-    });
+    };
+    res.json({ success: false, ...result });
   }
 });
 

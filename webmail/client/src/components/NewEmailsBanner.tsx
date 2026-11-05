@@ -1,4 +1,4 @@
-import { RefreshCw, ArrowUp } from 'lucide-react';
+import { RefreshCw } from 'lucide-react';
 
 interface NewEmailsBannerProps {
   /** Nombre de nouveaux emails détectés */
@@ -22,7 +22,7 @@ export default function NewEmailsBanner({ count, onRefresh, compact = false }: N
         type="button"
         onClick={onRefresh}
         aria-label={`${count} nouveau${plural ? 'x' : ''} message${plural ? 's' : ''}, cliquer pour actualiser`}
-        className={`group inline-flex items-center gap-2.5 rounded-full border transition-all duration-200 active:scale-[0.97] cursor-pointer shadow-sm hover:shadow-md ${
+        className={`group inline-flex items-center gap-2.5 rounded-full border transition-[background-color,box-shadow,transform] duration-200 active:scale-[0.97] cursor-pointer shadow-sm hover:shadow-md ${
           compact ? 'px-3.5 py-1 text-xs' : 'px-4 py-1.5 text-xs'
         } bg-[#edf2fa] hover:bg-[#d3e3fd] text-[#0b57d0] border-[#c2e7ff] dark:bg-[#131f33] dark:hover:bg-[#1a2b47] dark:text-[#a8c7fa] dark:border-[#004a77]/70`}
       >

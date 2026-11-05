@@ -225,6 +225,10 @@ export interface DetectMeetingResponse {
   confidence: number;
   reason: string;
   suggestedTitle?: string;
+  /** Créneau proposé, AAAA-MM-JJ. */
+  suggestedDate?: string;
+  /** Créneau proposé, HH:MM. */
+  suggestedTime?: string;
   source: 'n8n' | 'fallback';
 }
 

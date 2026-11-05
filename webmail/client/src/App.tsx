@@ -22,7 +22,6 @@ import { useMessages } from './hooks/useMessages';
 import { useTheme } from './hooks/useTheme';
 import { categorizeMessage, countByCategory } from './utils/categories';
 import { sendEmailWithN8n, sendEmailWithSmtp, getSmtpStatus, markMessageRead, markMessageFlagged } from './api';
-import { Bell } from 'lucide-react';
 import { EMPTY_ADVANCED_FILTERS } from './types';
 import type { AdvancedFilters } from './types';
 

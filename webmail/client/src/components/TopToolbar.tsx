@@ -202,7 +202,7 @@ export default function TopToolbar({
               <button
                 type="button"
                 onClick={onToggleUnreadOnly}
-                className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium transition-all ${
+                className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium transition-[background-color,color,box-shadow] ${
                   filterUnreadOnly
                     ? 'bg-[#0b57d0] text-white dark:bg-[#a8c7fa] dark:text-[#001d35] shadow-xs'
                     : 'bg-[#f1f3f4] text-[#444746] hover:bg-[#e8eaed] dark:bg-[#282a2c] dark:text-[#c4c7c5] dark:hover:bg-[#343739]'
@@ -217,7 +217,7 @@ export default function TopToolbar({
               <button
                 type="button"
                 onClick={onToggleAttachmentOnly}
-                className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium transition-all ${
+                className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium transition-[background-color,color,box-shadow] ${
                   filterAttachmentOnly
                     ? 'bg-[#0b57d0] text-white dark:bg-[#a8c7fa] dark:text-[#001d35] shadow-xs'
                     : 'bg-[#f1f3f4] text-[#444746] hover:bg-[#e8eaed] dark:bg-[#282a2c] dark:text-[#c4c7c5] dark:hover:bg-[#343739]'

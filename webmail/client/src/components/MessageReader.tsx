@@ -138,6 +138,19 @@ const REPLY_TONES = [
   },
 ] as const;
 
+/** « mardi 10 novembre à 14:00 » à partir de AAAA-MM-JJ + HH:MM. */
+function formatMeetingSlot(date: string, time: string): string {
+  if (!date) return '';
+  const parsed = new Date(`${date}T${time || '00:00'}:00`);
+  if (Number.isNaN(parsed.getTime())) return time ? `${date} à ${time}` : date;
+  const day = new Intl.DateTimeFormat('fr-FR', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+  }).format(parsed);
+  return time ? `${day} à ${time}` : day;
+}
+
 export default function MessageReader({
   message,
   loading,
@@ -268,8 +281,12 @@ export default function MessageReader({
       setMeetingConfidence(res.confidence);
       setMeetingSource(res.source);
       setMeetingReason(res.reason);
-      if (res.isMeeting && res.suggestedTitle) {
-        setMeetingTitle(res.suggestedTitle);
+      if (res.isMeeting) {
+        if (res.suggestedTitle) setMeetingTitle(res.suggestedTitle);
+        // Le créneau détecté préremplit la fenêtre de confirmation : plus
+        // besoin de ressaisir la date et l'heure lues dans l'email.
+        if (res.suggestedDate) setMeetingDate(res.suggestedDate);
+        if (res.suggestedTime) setMeetingTime(res.suggestedTime);
       }
     }).finally(() => {
       if (!cancelled) setIsDetectingMeeting(false);
@@ -633,14 +650,16 @@ export default function MessageReader({
                     <CheckCircle2 className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                     Rendez-vous confirmé !
                   </p>
-                  <p className="text-[11px] text-[#5f6368] dark:text-[#9aa0a6] truncate">{meetingTitle} · {meetingDate} à {meetingTime}</p>
+                  <p className="text-[11px] text-[#5f6368] dark:text-[#9aa0a6] truncate">{meetingTitle} · {formatMeetingSlot(meetingDate, meetingTime)}</p>
                 </>
               ) : (
                 <>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <p className="flex items-center gap-1.5 text-xs font-bold text-amber-700 dark:text-amber-300">
                       <CalendarClock className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                      Réunion détectée par l'IA
+                      {meetingSource === 'n8n'
+                        ? "Réunion détectée par l'IA"
+                        : 'Réunion détectée (analyse locale)'}
                     </p>
                     <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
                       meetingSource === 'n8n'
@@ -656,6 +675,11 @@ export default function MessageReader({
                         'Local'
                       )}
                     </span>
+                    {meetingDate && (
+                      <span className="text-[10px] font-medium text-amber-800 dark:text-amber-200">
+                        {formatMeetingSlot(meetingDate, meetingTime)}
+                      </span>
+                    )}
                   </div>
                   <p className="text-[11px] text-[#5f6368] dark:text-[#9aa0a6] truncate" title={meetingReason}>{meetingReason || 'Cliquez pour planifier le rendez-vous.'}</p>
                 </>
@@ -668,7 +692,8 @@ export default function MessageReader({
                 type="button"
                 id="meeting-confirm-btn"
                 onClick={() => {
-                  setMeetingTitle(message?.subject ?? '');
+                  // Ne pas écraser le titre proposé par la détection.
+                  if (!meetingTitle) setMeetingTitle(message?.subject ?? '');
                   setMeetingModalOpen(true);
                 }}
                 className="shrink-0 inline-flex items-center gap-2 rounded-full bg-amber-500 hover:bg-amber-600 text-white px-4 py-1.5 text-xs font-semibold transition-colors shadow-sm"
@@ -1049,7 +1074,7 @@ export default function MessageReader({
                     setReplyMode('reply');
                     setReplyText(replyOption);
                   }}
-                  className="rounded-full border border-[#dadce0] dark:border-[#444746] bg-[#f8f9fa] dark:bg-[#202124] px-3.5 py-1.5 text-xs text-[#1f1f1f] dark:text-[#e8eaed] hover:border-[#0b57d0] hover:bg-[#eaf1fb] dark:hover:border-[#a8c7fa] dark:hover:bg-[#004a77]/30 transition-all cursor-pointer shadow-xs active:scale-[0.98]"
+                  className="rounded-full border border-[#dadce0] dark:border-[#444746] bg-[#f8f9fa] dark:bg-[#202124] px-3.5 py-1.5 text-xs text-[#1f1f1f] dark:text-[#e8eaed] hover:border-[#0b57d0] hover:bg-[#eaf1fb] dark:hover:border-[#a8c7fa] dark:hover:bg-[#004a77]/30 transition-[background-color,border-color,box-shadow,transform] cursor-pointer shadow-xs active:scale-[0.98]"
                 >
                   {replyOption}
                 </button>
