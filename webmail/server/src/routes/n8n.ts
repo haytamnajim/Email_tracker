@@ -678,3 +678,405 @@ Réponds UNIQUEMENT avec ce JSON (pas de markdown) :
   }
 });
 
+/** Interface pour extract-tasks */
+interface ExtractTasksPayload {
+  webhookUrl?: string;
+  message: {
+    uid: number;
+    from: { name?: string; address?: string };
+    subject: string;
+    date: string;
+    text?: string;
+    html?: string | null;
+  };
+}
+
+interface ExtractTasksResponse {
+  success: boolean;
+  tasks: Array<{
+    title: string;
+    deadline?: string;
+    priority?: 'low' | 'medium' | 'high';
+    description?: string;
+  }>;
+  source: 'n8n' | 'fallback';
+  error?: string;
+}
+
+/** Route POST /api/n8n/extract-tasks */
+n8nRouter.post('/extract-tasks', async (req: Request, res: Response) => {
+  const { webhookUrl, message } = req.body as ExtractTasksPayload;
+
+  if (!message || !message.uid) {
+    res.status(400).json({ error: 'Message manquant ou invalide.' });
+    return;
+  }
+
+  const targetUrl = (webhookUrl || config.n8nWebhookUrl || '').trim();
+
+  if (!targetUrl) {
+    const tasks = extractTasksLocally(message);
+    res.json({ success: true, tasks, source: 'fallback' });
+    return;
+  }
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20_000);
+
+    const rawText = message.text?.trim() || '';
+    const htmlText = message.html
+      ? message.html
+          .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+          .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+          .replace(/<[^>]+>/g, ' ')
+          .replace(/\s{2,}/g, ' ')
+          .trim()
+      : '';
+    const emailBody = rawText || htmlText;
+
+    const payload = {
+      event: 'extract_tasks',
+      message: {
+        uid: message.uid,
+        from: message.from,
+        subject: message.subject || '(aucun objet)',
+        date: message.date,
+        body: emailBody.slice(0, 3000),
+      },
+      task: `Extrais les tâches, actions et échéances de cet email.
+Réponds UNIQUEMENT avec un JSON de ce format (pas de markdown) :
+[
+  {
+    "title": "titre de la tâche",
+    "deadline": "AAAA-MM-JJ" ou null,
+    "priority": "low" | "medium" | "high",
+    "description": "optionnel, max 100 caractères"
+  }
+]
+`,
+      timestamp: new Date().toISOString(),
+    };
+
+    const n8nResponse = await fetch(targetUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+
+    if (!n8nResponse.ok) {
+      throw new Error(`Le webhook n8n a renvoyé l'erreur ${n8nResponse.status}`);
+    }
+
+    const contentType = n8nResponse.headers.get('content-type') || '';
+    let result: unknown = null;
+
+    if (contentType.includes('application/json')) {
+      result = await n8nResponse.json();
+    } else {
+      const text = await n8nResponse.text();
+      result = JSON.parse(text);
+    }
+
+    let tasks: Array<{ title: string; deadline?: string; priority?: string; description?: string }>;
+    if (Array.isArray(result)) {
+      tasks = result;
+    } else if (result && Array.isArray(result.tasks)) {
+      tasks = result.tasks;
+    } else {
+      tasks = [];
+    }
+
+    // Nettoyer les deadlines non valides
+    const cleanedTasks = tasks.map((t: any) => ({
+      title: String(t.title || '').slice(0, 120) || 'Tâche sans titre',
+      deadline: t.deadline ? String(t.deadline) : undefined,
+      priority: t.priority === 'high' || t.priority === 'medium' || t.priority === 'low' ? t.priority : 'medium',
+      description: typeof t.description === 'string' ? t.description.slice(0, 100) : undefined,
+    })).filter((t: any) => t.title.trim().length > 0);
+
+    res.json({ success: true, tasks: cleanedTasks, source: 'n8n' });
+  } catch (err: unknown) {
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    console.error('[extract-tasks error]', errorMessage);
+    const tasks = extractTasksLocally(message);
+    res.json({ success: false, tasks, source: 'fallback', error: errorMessage });
+  }
+});
+
+/** Fonction de repli locale : extraction sommaire de tâches/échéances */
+function extractTasksLocally(message: {
+  subject: string;
+  text?: string;
+  html?: string | null;
+}): Array<{
+  title: string;
+  deadline?: string;
+  priority?: 'low' | 'medium' | 'high';
+  description?: string;
+}> {
+  const tasks: Array<{
+    title: string;
+    deadline?: string;
+    priority?: 'low' | 'medium' | 'high';
+    description?: string;
+  }> = [];
+  const body = (message.text || message.html || '').replace(/<[^>]+>/g, ' ');
+
+  // Regex simple pour les dates au format AA/MM/AAAA ou AA-MM-AAAA
+  const dateRegex = /\\b(\\d{1,2}[\\/\\-\\.]\\d{1,2}[\\/\\-\\.]\\d{2,4})\\b/g;
+  const dates = body.match(dateRegex) || [];
+
+  // On considère chaque paragraphe d'au moins 5 caractères comme une tâche potentielle
+  const paragraphs = body.split(/[.!?]+/).filter((l: string) => l.trim().length > 5);
+
+  for (const line of paragraphs) {
+    const trimmed = line.trim();
+    if (trimmed.length < 5) continue;
+
+    // Détection sommaire de priorité
+    let priority: 'low' | 'medium' | 'high' = 'medium';
+    if (/urgent|ASAP|critical|prioritaire/i.test(trimmed)) priority = 'high';
+    else if (/à faire|next|soon|délai/i.test(trimmed)) priority = 'medium';
+
+    tasks.push({
+      title: trimmed.substring(0, 120),
+      deadline: dates.length ? dates[0] : undefined,
+      priority,
+    });
+  }
+
+  // On ne garde que les 5 premières tâches max et on filtre les doublons
+  const seen = new Set<string>();
+  return tasks
+    .slice(0, 5)
+    .filter((t: any) => {
+      const key = t.title.toLowerCase().trim();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+/** Interface pour translate-email */
+interface TranslateEmailPayload {
+  webhookUrl?: string;
+  message: {
+    uid: number;
+    from: { name?: string; address?: string };
+    subject: string;
+    date: string;
+    text?: string;
+    html?: string | null;
+  };
+}
+
+interface TranslateEmailResponse {
+  success: boolean;
+  translated?: string;
+  source: 'n8n' | 'fallback';
+  error?: string;
+}
+
+/** Route POST /api/n8n/translate-email */
+n8nRouter.post('/translate-email', async (req: Request, res: Response) => {
+  const { webhookUrl, message } = req.body as TranslateEmailPayload;
+
+  if (!message || !message.uid) {
+    res.status(400).json({ error: 'Message manquant ou invalide.' });
+    return;
+  }
+
+  const targetUrl = (webhookUrl || config.n8nWebhookUrl || '').trim();
+
+  if (!targetUrl) {
+    // Fallback : retourne le sujet tel quel (pas de traduction réelle)
+    res.json({
+      success: true,
+      translated: message.subject,
+      source: 'fallback',
+    });
+    return;
+  }
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20_000);
+
+    const rawText = message.text?.trim() || '';
+    const htmlText = message.html
+      ? message.html
+          .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+          .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+          .replace(/<[^>]+>/g, ' ')
+          .replace(/\s{2,}/g, ' ')
+          .trim()
+      : '';
+    const emailBody = rawText || htmlText;
+
+    const payload = {
+      event: 'translate_email',
+      message: {
+        uid: message.uid,
+        from: message.from,
+        subject: message.subject || '(aucun objet)',
+        date: message.date,
+        body: emailBody.slice(0, 3000),
+      },
+      task: `Traduis cet email en français (ou vers la langue cible demandée). Garde le style professionnel. Renvoie UNIQUEMENT le texte traduit, pas de markdown, pas de commentaire.`,
+      timestamp: new Date().toISOString(),
+    };
+
+    const n8nResponse = await fetch(targetUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+
+    if (!n8nResponse.ok) {
+      throw new Error(`Le webhook n8n a renvoyé l'erreur ${n8nResponse.status}`);
+    }
+
+    const contentType = n8nResponse.headers.get('content-type') || '';
+    let result: unknown = null;
+
+    if (contentType.includes('application/json')) {
+      result = await n8nResponse.json();
+    } else {
+      const text = await n8nResponse.text();
+      result = JSON.parse(text);
+    }
+
+    // Le résultat peut être un string direct ou un objet { translated: "..." }
+    let translated: string | undefined;
+    if (typeof result === 'string') {
+      translated = result;
+    } else if (result && typeof result.translated === 'string') {
+      translated = result.translated;
+    } else if (result && typeof result.text === 'string') {
+      translated = result.text;
+    } else {
+      translated = String(result);
+    }
+
+    res.json({ success: true, translated, source: 'n8n' });
+  } catch (err: unknown) {
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    console.error('[translate-email error]', errorMessage);
+    res.json({
+      success: false,
+      translated: message.subject,
+      source: 'fallback',
+      error: errorMessage,
+    });
+  }
+});
+
+/** Interface pour rewrite-draft */
+interface RewriteDraftPayload {
+  webhookUrl?: string;
+  body: string;
+  tone?: 'professionnel' | 'concise' | 'positif' | 'decline';
+  instructions?: string;
+}
+
+interface RewriteDraftResponse {
+  success: boolean;
+  rewritten?: string;
+  source: 'n8n' | 'fallback';
+  error?: string;
+}
+
+/** Route POST /api/n8n/rewrite-draft */
+n8nRouter.post('/rewrite-draft', async (req: Request, res: Response) => {
+  const { webhookUrl, body, tone = 'professionnel', instructions } = req.body as RewriteDraftPayload;
+
+  if (!body || !body.trim()) {
+    res.status(400).json({ error: 'Contenu du brouillon vide.' });
+    return;
+  }
+
+  const targetUrl = (webhookUrl || config.n8nWebhookUrl || '').trim();
+
+  if (!targetUrl) {
+    // Fallback : applique un style basique selon le ton
+    const cleaned = body.trim().replace(/\s+/g, ' ');
+    let result = cleaned;
+    if (tone === 'concise') {
+      result = cleaned.split('.').filter((s: string) => s.trim().length > 0).join('. ').slice(0, 300);
+    } else if (tone === 'positif') {
+      result = `Merci pour votre message.\\n${cleaned.slice(0, 200)}...`;
+    } else if (tone === 'decline') {
+      result = `Je vous remercie pour votre message.\\nAprès examen, je ne pourrai pas donner suite pour le moment.`;
+    }
+    res.json({ success: true, rewritten: result, source: 'fallback' });
+    return;
+  }
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20_000);
+
+    const payload = {
+      event: 'rewrite_draft',
+      body: body.trim(),
+      tone,
+      instructions: instructions || '',
+      timestamp: new Date().toISOString(),
+    };
+
+    const n8nResponse = await fetch(targetUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+
+    if (!n8nResponse.ok) {
+      throw new Error(`Le webhook n8n a renvoyé l'erreur ${n8nResponse.status}`);
+    }
+
+    const contentType = n8nResponse.headers.get('content-type') || '';
+    let result: unknown = null;
+
+    if (contentType.includes('application/json')) {
+      result = await n8nResponse.json();
+    } else {
+      result = await n8nResponse.text();
+    }
+
+    let rewritten: string | undefined;
+    if (typeof result === 'string') {
+      rewritten = result;
+    } else if (result && typeof result.rewritten === 'string') {
+      rewritten = result.rewritten;
+    } else if (result && typeof result.text === 'string') {
+      rewritten = result.text;
+    } else {
+      rewritten = String(result);
+    }
+
+    res.json({ success: true, rewritten, source: 'n8n' });
+  } catch (err: unknown) {
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    console.error('[rewrite-draft error]', errorMessage);
+    const cleaned = (body || '').trim().replace(/\s+/g, ' ');
+    let fallback = cleaned;
+    if (tone === 'concise') {
+      fallback = cleaned.split('.').filter((s: string) => s.trim().length > 0).join('. ').slice(0, 300);
+    } else if (tone === 'positif') {
+      fallback = `Merci pour votre message.\\n${cleaned.slice(0, 200)}...`;
+    } else if (tone === 'decline') {
+      fallback = `Je vous remercie pour votre message.\\nAprès examen, je ne pourrai pas donner suite pour le moment.`;
+    }
+    res.json({ success: false, rewritten: fallback, source: 'fallback', error: errorMessage });
+  }
+});
+
+/** Analyse la structure JSON renvoyée par un node n8n (Respond to Webhook, AI Agent, OpenAI, etc.) */
+

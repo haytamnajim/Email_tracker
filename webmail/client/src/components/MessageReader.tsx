@@ -34,7 +34,16 @@ import {
   Check,
 } from 'lucide-react';
 import type { MessageDetail, Theme } from '../types';
-import { attachmentUrl, generateReplyWithN8n, cancelReplyWithN8n, summarizeEmailWithN8n, detectMeetingWithAI } from '../api';
+import {
+  attachmentUrl,
+  generateReplyWithN8n,
+  cancelReplyWithN8n,
+  summarizeEmailWithN8n,
+  detectMeetingWithAI,
+  extractTasksWithN8n,
+  translateEmailWithN8n,
+  rewriteDraftWithN8n,
+} from '../api';
 import { containsRemoteImages, sanitizeEmailHtml } from '../utils/html';
 import { formatAddressList, formatBytes, formatFullDate } from '../utils/format';
 import { senderGradient, senderInitials } from '../utils/colors';
@@ -59,6 +68,12 @@ interface MessageReaderProps {
   onCancelSummary?: () => void;
   /** Affiche une notification avec une action facultative (ex. ouvrir Calendar). */
   onNotify?: (message: string, actionLabel?: string, onAction?: () => void) => void;
+  /** Callback pour l'extraction de tâches */
+  onExtractTasks?: (tasks: Array<{ title: string; deadline?: string; priority?: 'low' | 'medium' | 'high'; description?: string }>) => void;
+  /** Callback pour la traduction */
+  onTranslate?: (translated: string) => void;
+  /** Callback pour la réécriture */
+  onRewrite?: (rewritten: string) => void;
 }
 
 const FRAME_COLORS: Record<Theme, { bg: string; ink: string; muted: string; quote: string }> = {
@@ -218,6 +233,31 @@ export default function MessageReader({
   const [generationError, setGenerationError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
+  // États pour l'extraction de tâches
+  const [extractTasksOpen, setExtractTasksOpen] = useState(false);
+  const [extractTasksLoading, setExtractTasksLoading] = useState(false);
+  const [extractTasksError, setExtractTasksError] = useState<string | null>(null);
+  const [extractTasks, setExtractTasks] = useState<
+    Array<{
+      title: string;
+      deadline?: string;
+      priority?: 'low' | 'medium' | 'high';
+      description?: string;
+    }>
+  >([]);
+
+  // États pour la traduction
+  const [translateOpen, setTranslateOpen] = useState(false);
+  const [translateLoading, setTranslateLoading] = useState(false);
+  const [translateError, setTranslateError] = useState<string | null>(null);
+  const [translateResult, setTranslateResult] = useState<string | null>(null);
+
+  // États pour la réécriture
+  const [rewriteOpen, setRewriteOpen] = useState(false);
+  const [rewriteLoading, setRewriteLoading] = useState(false);
+  const [rewriteError, setRewriteError] = useState<string | null>(null);
+  const [rewriteResult, setRewriteResult] = useState<string | null>(null);
+
   const handleCopyReply = async () => {
     if (!replyText.trim()) return;
     try {
@@ -252,6 +292,74 @@ export default function MessageReader({
       "🙏 Merci beaucoup pour votre retour.",
     ];
   }, [message?.text, message?.subject]);
+
+  /** Extrait les tâches et échéances de l'email */
+  const handleExtractTasks = async () => {
+    if (!message) return;
+    setExtractTasksLoading(true);
+    setExtractTasksError(null);
+    try {
+      const result = await extractTasksWithN8n(message);
+      if (result.success && result.tasks) {
+        setExtractTasks(result.tasks);
+        setExtractTasksOpen(true);
+        onExtractTasks?.(result.tasks);
+      } else {
+        setExtractTasksError(result.error || 'Erreur inconnue');
+      }
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      setExtractTasksError(errorMessage);
+    } finally {
+      setExtractTasksLoading(false);
+    }
+  };
+
+  /** Traduit l'email */
+  const handleTranslate = async () => {
+    if (!message) return;
+    setTranslateLoading(true);
+    setTranslateError(null);
+    setTranslateResult(null);
+    try {
+      const result = await translateEmailWithN8n(message);
+      if (result.success && result.translated) {
+        setTranslateResult(result.translated);
+        setTranslateOpen(true);
+        onTranslate?.(result.translated);
+      } else {
+        setTranslateError(result.error || 'Erreur inconnue');
+      }
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      setTranslateError(errorMessage);
+    } finally {
+      setTranslateLoading(false);
+    }
+  };
+
+  /** Réécrit le brouillon (pour les réponses) */
+  const handleRewrite = async () => {
+    if (!message) return;
+    setRewriteLoading(true);
+    setRewriteError(null);
+    setRewriteResult(null);
+    try {
+      const result = await rewriteDraftWithN8n(message.text || message.html || '', 'professionnel');
+      if (result.success && result.rewritten) {
+        setRewriteResult(result.rewritten);
+        setRewriteOpen(true);
+        onRewrite?.(result.rewritten);
+      } else {
+        setRewriteError(result.error || 'Erreur inconnue');
+      }
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      setRewriteError(errorMessage);
+    } finally {
+      setRewriteLoading(false);
+    }
+  };
 
   // États pour le résumé par l'IA
   const [summaryOpen, setSummaryOpen] = useState(false);
@@ -530,8 +638,7 @@ export default function MessageReader({
 
   return (
     <>
-      <SendFlight phase={sendPhase} />
-      <article className="flex h-full flex-col overflow-y-auto bg-white dark:bg-[#141414] select-text animate-reader-in">
+      
       {/* ── Barre d'outils supérieure Gmail ── */}
       <div className="flex h-12 shrink-0 items-center justify-between border-b border-[#e0e2e7] dark:border-[#3c4043] px-3 bg-white dark:bg-[#141414] sticky top-0 z-20">
         <div className="flex items-center gap-1">
@@ -596,6 +703,57 @@ export default function MessageReader({
             className="flex h-9 w-9 items-center justify-center rounded-full text-[#444746] dark:text-[#c4c7c5] hover:bg-[#f1f3f4] dark:hover:bg-[#282a2c] transition-colors"
           >
             <CheckSquare className="h-4 w-4" />
+          </button>
+
+          <div className="mx-1 h-5 w-[1px] bg-[#e0e2e7] dark:bg-[#3c4043]" />
+
+          <button
+            type="button"
+            title="Extraire tâches"
+            onClick={handleExtractTasks}
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-[#0b57d0] hover:bg-[#0842a0] text-white px-3 py-1.5 text-xs font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={extractTasksLoading}
+          >
+            <Bot className="h-4 w-4" />
+            {extractTasksLoading ? (
+              <Sparkles className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              "Tâches"
+            )}
+          </button>
+
+          <div className="mx-1 h-5 w-[1px] bg-[#e0e2e7] dark:bg-[#3c4043]" />
+
+          <button
+            type="button"
+            title="Traduire"
+            onClick={handleTranslate}
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-[#7c3aed] hover:bg-[#6d28d9] text-white px-3 py-1.5 text-xs font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={translateLoading}
+          >
+            <Translate className="h-4 w-4" />
+            {translateLoading ? (
+              <Sparkles className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              "Traduire"
+            )}
+          </button>
+
+          <div className="mx-1 h-5 w-[1px] bg-[#e0e2e7] dark:bg-[#3c4043]" />
+
+          <button
+            type="button"
+            title="Améliorer le texte"
+            onClick={handleRewrite}
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-[#c0843c] hover:#a8703f text-white px-3 py-1.5 text-xs font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={rewriteLoading}
+          >
+            <Bot className="h-4 w-4" />
+            {rewriteLoading ? (
+              <Sparkles className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              "Améliorer"
+            )}
           </button>
 
           <div className="mx-1 h-5 w-[1px] bg-[#e0e2e7] dark:bg-[#3c4043]" />

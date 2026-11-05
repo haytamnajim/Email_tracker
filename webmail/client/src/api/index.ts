@@ -207,43 +207,74 @@ export function getN8nConfig(): Promise<{
   }>(`${BASE}/n8n/config`);
 }
 
-export interface DetectMeetingRequest {
-  webhookUrl?: string;
-  message: {
-    uid: number;
-    from: { name?: string; address?: string };
-    subject: string;
-    date: string;
-    text?: string;
-    html?: string | null;
-  };
-}
-
-export interface DetectMeetingResponse {
+/** Réponse de extraction de tâches */
+export interface ExtractTasksResponse {
   success: boolean;
-  isMeeting: boolean;
-  confidence: number;
-  reason: string;
-  suggestedTitle?: string;
-  /** Créneau proposé, AAAA-MM-JJ. */
-  suggestedDate?: string;
-  /** Créneau proposé, HH:MM. */
-  suggestedTime?: string;
+  tasks: Array<{
+    title: string;
+    deadline?: string;
+    priority?: 'low' | 'medium' | 'high';
+    description?: string;
+  }>;
   source: 'n8n' | 'fallback';
+  error?: string;
 }
 
-export function detectMeetingWithAI(payload: DetectMeetingRequest): Promise<DetectMeetingResponse> {
-  return request<DetectMeetingResponse>(`${BASE}/n8n/detect-meeting`, {
+/** Extrait les tâches et échéances d'un email via n8n */
+export function extractTasksWithN8n(message: {
+  uid: number;
+  from: { name?: string; address?: string };
+  subject: string;
+  date: string;
+  text?: string;
+  html?: string | null;
+}, webhookUrl?: string): Promise<ExtractTasksResponse> {
+  return request<ExtractTasksResponse>(`${BASE}/n8n/extract-tasks`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: jsonBody(payload),
-  }).catch(() => ({
-    success: false,
-    isMeeting: false,
-    confidence: 0,
-    reason: 'Erreur réseau lors de la détection.',
-    source: 'fallback' as const,
-  }));
+    body: jsonBody({ message, webhookUrl }),
+  });
+}
+
+/** Interface de réponse de traduction */
+export interface TranslateEmailResponse {
+  success: boolean;
+  translated?: string;
+  source: 'n8n' | 'fallback';
+  error?: string;
+}
+
+/** Traduit un email via n8n */
+export function translateEmailWithN8n(message: {
+  uid: number;
+  from: { name?: string; address?: string };
+  subject: string;
+  date: string;
+  text?: string;
+  html?: string | null;
+}, webhookUrl?: string): Promise<TranslateEmailResponse> {
+  return request<TranslateEmailResponse>(`${BASE}/n8n/translate-email`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: jsonBody({ message, webhookUrl }),
+  });
+}
+
+/** Interface de réponse de réécriture de brouillon */
+export interface RewriteDraftResponse {
+  success: boolean;
+  rewritten?: string;
+  source: 'n8n' | 'fallback';
+  error?: string;
+}
+
+/** Réécrit un brouillon via n8n */
+export function rewriteDraftWithN8n(body: string, tone?: string, instructions?: string, webhookUrl?: string): Promise<RewriteDraftResponse> {
+  return request<RewriteDraftResponse>(`${BASE}/n8n/rewrite-draft`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: jsonBody({ body, tone, instructions, webhookUrl }),
+  });
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -280,7 +311,8 @@ export function markMessagesRead(uids: number[], folder: string, read: boolean):
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: jsonBody({ uids, folder, value: read }),
-  });
+  }
+  );
 }
 
 /** Marque plusieurs messages comme suivis/non suivis. */
@@ -290,7 +322,6 @@ export function markMessagesFlagged(uids: number[], folder: string, flagged: boo
     headers: { 'Content-Type': 'application/json' },
     body: jsonBody({ uids, folder, value: flagged }),
   });
-}
 
 // ─────────────────────────────────────────────────────────────────
 // Relances : messages envoyés restés sans réponse
@@ -318,5 +349,3 @@ export function getFollowups(days = 3, limit = 10): Promise<FollowupsResponse> {
     `${BASE}/followups?days=${encodeURIComponent(days)}&limit=${encodeURIComponent(limit)}`,
   );
 }
-
-
