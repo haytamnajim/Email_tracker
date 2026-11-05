@@ -731,6 +731,7 @@ export default function App() {
       handleSendEmail(to, subject, body, messageUid, effectiveImapFolder),
     onCancelReply: () => addToast('Génération de réponse annulée.'),
     onCancelSummary: () => addToast('Génération du résumé annulée.'),
+    onNotify: addToast,
   };
 
   const showFullReader = splitView === 'none' && selectedUid !== null;

@@ -28,7 +28,6 @@ import {
   Heart,
   Zap,
   Bot,
-  CheckCircle2,
   CalendarClock,
   User,
   Copy,
@@ -58,6 +57,8 @@ interface MessageReaderProps {
   onSendReply?: (to: string, subject: string, body: string, uid?: number) => Promise<boolean | void> | void;
   onCancelReply?: () => void;
   onCancelSummary?: () => void;
+  /** Affiche une notification avec une action facultative (ex. ouvrir Calendar). */
+  onNotify?: (message: string, actionLabel?: string, onAction?: () => void) => void;
 }
 
 const FRAME_COLORS: Record<Theme, { bg: string; ink: string; muted: string; quote: string }> = {
@@ -158,6 +159,36 @@ function formatMeetingSlot(date: string, time: string): string {
   return time ? `${day} à ${time}` : day;
 }
 
+/**
+ * Lien Google Calendar prérempli (heure locale, sans conversion UTC).
+ * La durée est ajoutée en minutes : 90 minutes donne bien 1 h 30.
+ */
+function buildGoogleCalendarUrl(
+  title: string,
+  date: string,
+  time: string,
+  duration: string,
+): string {
+  if (!date) return '';
+  const start = new Date(`${date}T${time || '09:00'}:00`);
+  if (Number.isNaN(start.getTime())) return '';
+  const durationMinutes = Number(duration) || 60;
+  const end = new Date(start.getTime() + durationMinutes * 60_000);
+
+  const compact = (value: Date) =>
+    `${value.getFullYear()}${String(value.getMonth() + 1).padStart(2, '0')}${String(
+      value.getDate(),
+    ).padStart(2, '0')}T${String(value.getHours()).padStart(2, '0')}${String(
+      value.getMinutes(),
+    ).padStart(2, '0')}00`;
+
+  return `https://calendar.google.com/calendar/r/eventnew?text=${encodeURIComponent(
+    title,
+  )}&dates=${compact(start)}/${compact(end)}&details=${encodeURIComponent(
+    'Réunion depuis votre Webmail',
+  )}`;
+}
+
 export default function MessageReader({
   message,
   loading,
@@ -173,6 +204,7 @@ export default function MessageReader({
   onSendReply,
   onCancelReply,
   onCancelSummary,
+  onNotify,
 }: MessageReaderProps) {
   const [allowRemoteImages, setAllowRemoteImages] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -624,22 +656,18 @@ export default function MessageReader({
       </div>
 
       {/* ── Bandeau Détection de Réunion par IA ── */}
-      {(isDetectingMeeting || meetingDetected) && (
+      {(isDetectingMeeting || meetingDetected) && !meetingConfirmed && (
         <div className={`mx-6 mt-3 rounded-2xl border px-4 py-3 flex items-center justify-between gap-3 transition-[border-color,background-color] duration-200 ${
           isDetectingMeeting
             ? 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/30'
-            : meetingConfirmed
-            ? 'border-emerald-300 dark:border-emerald-700 bg-gradient-to-r from-emerald-50 to-green-50 dark:from-emerald-950/40 dark:to-green-950/30'
             : 'border-amber-300 dark:border-amber-700 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/40 dark:to-orange-950/30'
         }`}>
           <div className="flex items-center gap-3 min-w-0">
             <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${
-              isDetectingMeeting ? 'bg-slate-400 text-white' : meetingConfirmed ? 'bg-emerald-500 text-white' : 'bg-amber-500 text-white'
+              isDetectingMeeting ? 'bg-slate-400 text-white' : 'bg-amber-500 text-white'
             }`}>
               {isDetectingMeeting
                 ? <Sparkles className="h-4 w-4 animate-spin" />
-                : meetingConfirmed
-                ? <CalendarCheck className="h-4 w-4" />
                 : <CalendarPlus className="h-4 w-4" />}
             </div>
             <div className="min-w-0">
@@ -650,14 +678,6 @@ export default function MessageReader({
                     Analyse IA en cours…
                   </p>
                   <p className="text-[11px] text-[#5f6368] dark:text-[#9aa0a6]">L'IA vérifie si cet email contient une demande de réunion.</p>
-                </>
-              ) : meetingConfirmed ? (
-                <>
-                  <p className="flex items-center gap-1.5 text-xs font-bold text-emerald-700 dark:text-emerald-300">
-                    <CheckCircle2 className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                    Rendez-vous confirmé !
-                  </p>
-                  <p className="text-[11px] text-[#5f6368] dark:text-[#9aa0a6] truncate">{meetingTitle} · {formatMeetingSlot(meetingDate, meetingTime)}</p>
                 </>
               ) : (
                 <>
@@ -694,31 +714,20 @@ export default function MessageReader({
             </div>
           </div>
           {!isDetectingMeeting && (
-            !meetingConfirmed ? (
-              <button
-                type="button"
-                id="meeting-confirm-btn"
-                onClick={() => {
-                  // Ne pas écraser le titre proposé par la détection.
-                  if (!meetingTitle) setMeetingTitle(message?.subject ?? '');
-                  setMeetingModalOpen(true);
-                }}
-                className="shrink-0 inline-flex items-center gap-2 rounded-full bg-amber-500 hover:bg-amber-600 text-white px-4 py-1.5 text-xs font-semibold transition-colors shadow-sm"
-              >
-                <CalendarPlus className="h-3.5 w-3.5" />
-                Confirmer le RDV
-              </button>
-            ) : (
-              <a
-                href={`https://calendar.google.com/calendar/r/eventnew?text=${encodeURIComponent(meetingTitle)}&dates=${meetingDate.replace(/-/g, '')}T${meetingTime.replace(':', '')}00/${meetingDate.replace(/-/g, '')}T${String(parseInt(meetingTime.split(':')[0]) + Math.floor(parseInt(meetingDuration)/60)).padStart(2,'0')}${meetingTime.split(':')[1]}00&details=${encodeURIComponent('Réunion depuis votre Webmail')}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="shrink-0 inline-flex items-center gap-2 rounded-full bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-1.5 text-xs font-semibold transition-colors shadow-sm"
-              >
-                <CalendarCheck className="h-3.5 w-3.5" />
-                Voir dans Calendar
-              </a>
-            )
+            <button
+              type="button"
+              id="meeting-confirm-btn"
+              onClick={() => {
+                // Ne pas écraser le titre proposé par la détection.
+                if (!meetingTitle) setMeetingTitle(message?.subject ?? '');
+                if (!meetingTime) setMeetingTime('09:00');
+                setMeetingModalOpen(true);
+              }}
+              className="shrink-0 inline-flex items-center gap-2 rounded-full bg-amber-500 hover:bg-amber-600 text-white px-4 py-1.5 text-xs font-semibold transition-colors shadow-sm"
+            >
+              <CalendarPlus className="h-3.5 w-3.5" />
+              Confirmer le RDV
+            </button>
           )}
         </div>
       )}
@@ -808,10 +817,25 @@ export default function MessageReader({
               <button
                 type="button"
                 id="meeting-confirm-submit"
-                disabled={!meetingDate || !meetingTitle.trim()}
+                disabled={!meetingDate || !meetingTime || !meetingTitle.trim()}
                 onClick={() => {
+                  const calendarUrl = buildGoogleCalendarUrl(
+                    meetingTitle,
+                    meetingDate,
+                    meetingTime,
+                    meetingDuration,
+                  );
                   setMeetingConfirmed(true);
                   setMeetingModalOpen(false);
+                  // Le bandeau IA disparaît une fois le rendez-vous fixé.
+                  // La notification conserve l'accès au préremplissage Calendar.
+                  if (calendarUrl && onNotify) {
+                    onNotify(
+                      `Rendez-vous confirmé : ${formatMeetingSlot(meetingDate, meetingTime)}.`,
+                      'Ouvrir Calendar',
+                      () => window.open(calendarUrl, '_blank', 'noopener,noreferrer'),
+                    );
+                  }
                 }}
                 className="flex-1 inline-flex items-center justify-center gap-2 rounded-full bg-[#0b57d0] hover:bg-[#0842a0] text-white px-4 py-2.5 text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
