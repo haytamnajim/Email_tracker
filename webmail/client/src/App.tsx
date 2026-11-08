@@ -24,7 +24,7 @@ import { useTheme } from './hooks/useTheme';
 import { categorizeMessage, countByCategory } from './utils/categories';
 import { classifyEmail } from './utils/classification';
 import type { EmailClass } from './utils/classification';
-import { sendEmailWithN8n, sendEmailWithSmtp, getSmtpStatus, markMessageRead, markMessageFlagged } from './api';
+import { sendEmailWithN8n, sendEmailWithSmtp, getSmtpStatus, markMessageRead, markMessageFlagged, moveMessage } from './api';
 import type { FollowupCandidate } from './api';
 import { EMPTY_ADVANCED_FILTERS } from './types';
 import type { AdvancedFilters } from './types';
@@ -432,7 +432,8 @@ export default function App() {
 
   const handleToggleRead = useCallback(
     (uid: number) => {
-      const current = items.find((i) => i.uid === uid)?.isRead ?? false;
+      const current =
+        readOverrides.get(uid) ?? items.find((i) => i.uid === uid)?.isRead ?? false;
       const nextState = !current;
       setReadOverrides((prev) => new Map(prev).set(uid, nextState));
       addToast(nextState ? 'Marqué comme lu' : 'Marqué comme non lu');
@@ -441,7 +442,7 @@ export default function App() {
         // Échec silencieux : l'état local reste.
       });
     },
-    [items, addToast, effectiveImapFolder],
+    [items, readOverrides, addToast, effectiveImapFolder],
   );
 
   const handleSnooze = useCallback(
@@ -457,6 +458,42 @@ export default function App() {
       });
     },
     [selectedUid, addToast],
+  );
+
+  const handleMoveMessage = useCallback(
+    (uid: number, targetFolder: string) => {
+      const sourceFolder =
+        selectedUid === uid && rawMessage?.folder ? rawMessage.folder : effectiveImapFolder;
+      const targetLabel =
+        folders.find((folder) => folder.id === targetFolder)?.label ?? targetFolder;
+
+      setHiddenUids((prev) => new Set(prev).add(uid));
+      if (selectedUid === uid) setSelectedUid(null);
+
+      void moveMessage(uid, sourceFolder, targetFolder)
+        .then(() => {
+          addToast(`Message déplacé vers ${targetLabel}.`);
+          reloadFolders();
+          reloadMessages();
+        })
+        .catch((err: unknown) => {
+          setHiddenUids((prev) => {
+            const next = new Set(prev);
+            next.delete(uid);
+            return next;
+          });
+          addToast(err instanceof Error ? err.message : 'Déplacement impossible.');
+        });
+    },
+    [
+      selectedUid,
+      rawMessage,
+      effectiveImapFolder,
+      folders,
+      addToast,
+      reloadFolders,
+      reloadMessages,
+    ],
   );
 
   // Batch actions
@@ -725,6 +762,9 @@ export default function App() {
     onDelete: handleDelete,
     onToggleStar: handleToggleStar,
     onToggleRead: handleToggleRead,
+    onSnooze: handleSnooze,
+    onMove: handleMoveMessage,
+    folders,
     isStarred: selectedUid ? starredUids.has(selectedUid) : false,
     isRead: selectedUid ? (readOverrides.get(selectedUid) ?? rawMessage?.isRead ?? false) : false,
     onSendReply: (to: string, subject: string, body: string, messageUid?: number) =>

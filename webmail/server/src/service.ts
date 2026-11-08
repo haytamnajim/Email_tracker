@@ -5,7 +5,15 @@ import {
   demoListFolders,
   demoListMessages,
 } from './demoData.ts';
-import { imapGetAttachment, imapGetMessage, imapListFolders, imapListFollowups, imapListMessages } from './imap.ts';
+import {
+  imapGetAttachment,
+  imapGetMessage,
+  imapGetMessageFlags,
+  imapListFolders,
+  imapListFollowups,
+  imapListMessages,
+} from './imap.ts';
+import { moveMessage as imapMoveMessage, setKeyword as imapSetKeyword } from './imapFlags.ts';
 import type { FollowupCandidate, MessageQuery } from './types.ts';
 
 /**
@@ -22,4 +30,10 @@ export const service = {
     config.demoMode ? demoGetAttachment(uid, index, folder) : imapGetAttachment(uid, index, folder),
   listFollowups: (sentFolder: string, days: number, limit: number): Promise<FollowupCandidate[]> =>
     config.demoMode ? Promise.resolve([]) : imapListFollowups(sentFolder, days, limit),
+  getMessageFlags: (uid: number, folder: string): Promise<string[]> =>
+    config.demoMode ? Promise.resolve([]) : imapGetMessageFlags(uid, folder),
+  moveMessage: (uid: number, from: string, to: string): Promise<void> =>
+    config.demoMode ? Promise.resolve() : imapMoveMessage(uid, from, to),
+  setKeyword: (uid: number, folder: string, keyword: string, value: boolean): Promise<void> =>
+    config.demoMode ? Promise.resolve() : imapSetKeyword(uid, folder, keyword, value),
 };

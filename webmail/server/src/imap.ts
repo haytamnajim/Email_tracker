@@ -378,6 +378,16 @@ export async function imapGetMessage(uid: number, folder: string): Promise<Messa
   });
 }
 
+/** Lit les drapeaux IMAP d'un message (dont les étiquettes personnalisées). */
+export async function imapGetMessageFlags(uid: number, folder: string): Promise<string[]> {
+  return run(async (imap) => {
+    await imap.mailboxOpen(folder, { readOnly: true });
+    const message = await imap.fetchOne(String(uid), { flags: true }, { uid: true });
+    if (!message) return [];
+    return Array.from(message.flags ?? []);
+  });
+}
+
 export async function imapGetAttachment(
   uid: number,
   index: number,

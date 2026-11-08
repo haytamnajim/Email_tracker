@@ -2,6 +2,7 @@ import { Router } from 'express';
 import type { Request, Response } from 'express';
 import { MailError, asyncHandler } from '../errors.ts';
 import { markAsRead, markAsUnread, setFlagged, setFlagOnUids } from '../imapFlags.ts';
+import { service } from '../service.ts';
 
 export const flagsRouter = Router();
 
@@ -26,6 +27,43 @@ function parseUidList(value: unknown): number[] {
   }
   return [];
 }
+
+function parseKeyword(value: unknown): string {
+  if (typeof value !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(value)) {
+    throw new MailError('Étiquette invalide.', 400);
+  }
+  return value;
+}
+
+/**
+ * GET /api/flags/:uid/keywords
+ * Liste les drapeaux IMAP d'un message (dont les étiquettes personnalisées).
+ */
+flagsRouter.get(
+  '/:uid/keywords',
+  asyncHandler(async (req: Request, res: Response) => {
+    const uid = parseUidParam(req.params.uid);
+    const folder = parseFolderParam(req.query.folder);
+    const keywords = await service.getMessageFlags(uid, folder);
+    res.json({ success: true, keywords });
+  }),
+);
+
+/**
+ * PATCH /api/flags/:uid/keywords
+ * Ajoute ou retire une étiquette IMAP (keyword) sur un message.
+ */
+flagsRouter.patch(
+  '/:uid/keywords',
+  asyncHandler(async (req: Request, res: Response) => {
+    const uid = parseUidParam(req.params.uid);
+    const folder = parseFolderParam(req.query.folder);
+    const { keyword, value = true } = req.body as { keyword?: unknown; value?: boolean };
+    const parsed = parseKeyword(keyword);
+    await service.setKeyword(uid, folder, parsed, Boolean(value));
+    res.json({ success: true, keyword: parsed, action: value ? 'added' : 'removed' });
+  }),
+);
 
 /**
  * PATCH /api/flags/:uid/read

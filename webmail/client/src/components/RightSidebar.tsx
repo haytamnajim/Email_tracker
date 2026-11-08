@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Calendar,
   Lightbulb,
@@ -11,14 +11,9 @@ import {
   Check,
   X,
 } from 'lucide-react';
+import { loadTasks, saveTasks, subscribeTasks, type TaskItem } from '../utils/tasks';
 
 export type CompanionPanelType = 'calendar' | 'keep' | 'tasks' | 'contacts' | null;
-
-interface TaskItem {
-  id: string;
-  text: string;
-  done: boolean;
-}
 
 interface NoteItem {
   id: string;
@@ -28,7 +23,6 @@ interface NoteItem {
 
 /* ── Persistance localStorage (#10) : lectures/écritures protégées ── */
 
-const TASKS_KEY = 'webmail_tasks';
 const NOTES_KEY = 'webmail_notes';
 
 const DEFAULT_TASKS: TaskItem[] = [
@@ -73,8 +67,8 @@ export default function RightSidebar() {
   const [activePanel, setActivePanel] = useState<CompanionPanelType>(null);
   const [collapsed, setCollapsed] = useState(false);
 
-  // Données interactives pour les tâches (persistées)
-  const [tasks, setTasks] = useState<TaskItem[]>(() => loadStored(TASKS_KEY, DEFAULT_TASKS));
+  // Données interactives pour les tâches (persistées et partagées avec le lecteur)
+  const [tasks, setTasks] = useState<TaskItem[]>(() => loadTasks(DEFAULT_TASKS));
   const [newTaskText, setNewTaskText] = useState('');
 
   // Données interactives pour Google Keep (persistées)
@@ -87,10 +81,13 @@ export default function RightSidebar() {
   const handleSetTasks = (updater: (prev: TaskItem[]) => TaskItem[]) => {
     setTasks((prev) => {
       const next = updater(prev);
-      saveStored(TASKS_KEY, next);
+      saveTasks(next);
       return next;
     });
   };
+
+  // Le lecteur peut ajouter une tâche : le panneau reste synchronisé.
+  useEffect(() => subscribeTasks((next) => setTasks(next)), []);
 
   const handleSetNotes = (updater: (prev: NoteItem[]) => NoteItem[]) => {
     setNotes((prev) => {
@@ -219,15 +216,36 @@ export default function RightSidebar() {
                       >
                         <Check className="h-3 w-3 stroke-[3]" />
                       </button>
-                      <span
-                        className={`flex-1 text-xs leading-relaxed ${
-                          task.done
-                            ? 'line-through text-[#5f6368] dark:text-[#9aa0a6]'
-                            : 'text-[#1f1f1f] dark:text-[#e8eaed]'
-                        }`}
-                      >
-                        {task.text}
-                      </span>
+                      <div className="min-w-0 flex-1">
+                        <span
+                          className={`block text-xs leading-relaxed ${
+                            task.done
+                              ? 'line-through text-[#5f6368] dark:text-[#9aa0a6]'
+                              : 'text-[#1f1f1f] dark:text-[#e8eaed]'
+                          }`}
+                        >
+                          {task.text}
+                        </span>
+                        {(task.deadline || task.priority || task.source) && (
+                          <span className="mt-0.5 block text-[10.5px] text-[#5f6368] dark:text-[#9aa0a6]">
+                            {[
+                              task.deadline ? `Échéance : ${task.deadline}` : null,
+                              task.priority
+                                ? `Priorité ${
+                                    task.priority === 'high'
+                                      ? 'haute'
+                                      : task.priority === 'low'
+                                        ? 'basse'
+                                        : 'moyenne'
+                                  }`
+                                : null,
+                              task.source || null,
+                            ]
+                              .filter(Boolean)
+                              .join(' · ')}
+                          </span>
+                        )}
+                      </div>
                       <button
                         type="button"
                         onClick={() => deleteTask(task.id)}

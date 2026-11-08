@@ -326,6 +326,46 @@ export interface FlagResponse {
   count?: number;
 }
 
+/** Déplace un message vers un autre dossier (action utilisateur). */
+export function moveMessage(
+  uid: number,
+  from: string,
+  to: string,
+): Promise<{ success: boolean; from: string; to: string }> {
+  return request<{ success: boolean; from: string; to: string }>(`${BASE}/messages/${uid}/move`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: jsonBody({ from, to }),
+  });
+}
+
+/** Liste les étiquettes IMAP (keywords) appliquées à un message. */
+export function getMessageKeywords(
+  uid: number,
+  folder: string,
+): Promise<{ success: boolean; keywords: string[] }> {
+  return request<{ success: boolean; keywords: string[] }>(
+    `${BASE}/flags/${uid}/keywords?folder=${encodeURIComponent(folder)}`,
+  );
+}
+
+/** Ajoute ou retire une étiquette IMAP sur un message. */
+export function setMessageKeyword(
+  uid: number,
+  folder: string,
+  keyword: string,
+  value: boolean,
+): Promise<FlagResponse> {
+  return request<FlagResponse>(
+    `${BASE}/flags/${uid}/keywords?folder=${encodeURIComponent(folder)}`,
+    {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: jsonBody({ keyword, value }),
+    },
+  );
+}
+
 /** Marque un message comme lu/non lu. */
 export function markMessageRead(uid: number, folder: string, read: boolean): Promise<FlagResponse> {
   return request<FlagResponse>(`${BASE}/flags/${uid}/read?folder=${encodeURIComponent(folder)}`, {

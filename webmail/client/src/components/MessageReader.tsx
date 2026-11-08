@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeft,
   Archive,
@@ -34,7 +34,7 @@ import {
   Check,
   Languages,
 } from 'lucide-react';
-import type { MessageDetail, Theme } from '../types';
+import type { Folder, MessageDetail, Theme } from '../types';
 import {
   attachmentUrl,
   generateReplyWithN8n,
@@ -44,13 +44,24 @@ import {
   extractTasksWithN8n,
   translateEmailWithN8n,
   rewriteDraftWithN8n,
+  getMessageKeywords,
+  setMessageKeyword,
 } from '../api';
+import { addTask } from '../utils/tasks';
 import { containsRemoteImages, sanitizeEmailHtml } from '../utils/html';
 import { formatAddressList, formatBytes, formatFullDate } from '../utils/format';
 import { senderGradient, senderInitials } from '../utils/colors';
 import { ReaderSkeleton } from './Skeleton';
 import SendFlight, { SEND_DONE_MS, SEND_FLIGHT_MS, type SendPhase } from './SendFlight';
 import SendButton from './SendButton';
+
+/** Étiquettes proposées dans le menu, stockées comme keywords IMAP. */
+const MESSAGE_LABELS = [
+  { id: 'WebmailTravail', label: 'Travail' },
+  { id: 'WebmailPersonnel', label: 'Personnel' },
+  { id: 'WebmailUrgent', label: 'Urgent' },
+  { id: 'WebmailFacture', label: 'Facture' },
+] as const;
 
 interface MessageReaderProps {
   message: MessageDetail | null;
@@ -63,7 +74,13 @@ interface MessageReaderProps {
   onArchive?: (uid: number) => void;
   onDelete?: (uid: number) => void;
   onToggleStar?: (uid: number) => void;
+  onToggleRead?: (uid: number) => void;
+  onSnooze?: (uid: number) => void;
+  onMove?: (uid: number, targetFolder: string) => void;
   isStarred?: boolean;
+  isRead?: boolean;
+  /** Dossiers disponibles pour le menu « Déplacer vers ». */
+  folders?: Folder[];
   onSendReply?: (to: string, subject: string, body: string, uid?: number) => Promise<boolean | void> | void;
   onCancelReply?: () => void;
   onCancelSummary?: () => void;
@@ -216,7 +233,12 @@ export default function MessageReader({
   onArchive,
   onDelete,
   onToggleStar,
+  onToggleRead,
+  onSnooze,
+  onMove,
   isStarred = false,
+  isRead = false,
+  folders = [],
   onSendReply,
   onCancelReply,
   onCancelSummary,
@@ -261,6 +283,105 @@ export default function MessageReader({
   const [rewriteLoading, setRewriteLoading] = useState(false);
   const [rewriteError, setRewriteError] = useState<string | null>(null);
   const [rewriteResult, setRewriteResult] = useState<string | null>(null);
+
+  // Menus d'actions et étiquettes IMAP
+  const [moveMenuOpen, setMoveMenuOpen] = useState(false);
+  const [labelsMenuOpen, setLabelsMenuOpen] = useState(false);
+  const [keywords, setKeywords] = useState<string[]>([]);
+  const [labelBusy, setLabelBusy] = useState<string | null>(null);
+  const moveMenuRef = useRef<HTMLDivElement>(null);
+  const labelsMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (moveMenuRef.current && !moveMenuRef.current.contains(event.target as Node)) {
+        setMoveMenuOpen(false);
+      }
+      if (labelsMenuRef.current && !labelsMenuRef.current.contains(event.target as Node)) {
+        setLabelsMenuOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  useEffect(() => {
+    if (!message) {
+      setKeywords([]);
+      return;
+    }
+    let cancelled = false;
+    void getMessageKeywords(message.uid, message.folder)
+      .then((result) => {
+        if (!cancelled && result.success) setKeywords(result.keywords);
+      })
+      .catch(() => {
+        if (!cancelled) setKeywords([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [message?.uid, message?.folder]);
+
+  const junkFolder = useMemo(
+    () =>
+      folders.find((folder) =>
+        /spam|junk|indésirable|courrier ind/i.test(`${folder.id} ${folder.name} ${folder.label}`),
+      ),
+    [folders],
+  );
+
+  const moveTargets = useMemo(
+    () => folders.filter((folder) => folder.id !== message?.folder),
+    [folders, message?.folder],
+  );
+
+  const currentFolderLabel = useMemo(
+    () => folders.find((folder) => folder.id === message?.folder)?.label ?? 'Message',
+    [folders, message?.folder],
+  );
+
+  const handleToggleLabel = async (keyword: string, label: string) => {
+    if (!message) return;
+    const nextValue = !keywords.includes(keyword);
+    setKeywords((prev) =>
+      nextValue ? [...prev, keyword] : prev.filter((item) => item !== keyword),
+    );
+    setLabelBusy(keyword);
+    try {
+      await setMessageKeyword(message.uid, message.folder, keyword, nextValue);
+      onNotify?.(nextValue ? `Étiquette « ${label} » ajoutée.` : `Étiquette « ${label} » retirée.`);
+    } catch (err: unknown) {
+      setKeywords((prev) =>
+        nextValue ? prev.filter((item) => item !== keyword) : [...prev, keyword],
+      );
+      onNotify?.(err instanceof Error ? err.message : "Impossible de modifier l'étiquette.");
+    } finally {
+      setLabelBusy(null);
+    }
+  };
+
+  const handleAddToTasks = () => {
+    if (!message) return;
+    const task = addTask({
+      text: message.subject || '(sans objet)',
+      source: message.from?.address,
+    });
+    onNotify?.(task ? 'Tâche ajoutée au panneau Google Tâches.' : "Impossible d'ajouter la tâche.");
+  };
+
+  const handleMarkSpam = () => {
+    if (!message) return;
+    if (!junkFolder) {
+      onNotify?.("Dossier « Spam » introuvable sur ce compte.");
+      return;
+    }
+    if (!onMove) {
+      onNotify?.('Le déplacement est indisponible.');
+      return;
+    }
+    onMove(message.uid, junkFolder.id);
+  };
 
   const handleCopyReply = async () => {
     if (!replyText.trim()) return;
@@ -682,6 +803,7 @@ export default function MessageReader({
 
           <button
             type="button"
+            onClick={handleMarkSpam}
             title="Signaler comme spam"
             className="flex h-9 w-9 items-center justify-center rounded-full text-[#444746] dark:text-[#c4c7c5] hover:bg-[#f1f3f4] dark:hover:bg-[#282a2c] transition-colors"
           >
@@ -701,22 +823,27 @@ export default function MessageReader({
 
           <button
             type="button"
-            title="Marquer comme non lu"
-            className="flex h-9 w-9 items-center justify-center rounded-full text-[#444746] dark:text-[#c4c7c5] hover:bg-[#f1f3f4] dark:hover:bg-[#282a2c] transition-colors"
+            onClick={() => onToggleRead?.(message.uid)}
+            disabled={!isRead || !onToggleRead}
+            title={isRead ? 'Marquer comme non lu' : 'Message déjà non lu'}
+            className="flex h-9 w-9 items-center justify-center rounded-full text-[#444746] dark:text-[#c4c7c5] hover:bg-[#f1f3f4] dark:hover:bg-[#282a2c] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <Mail className="h-4 w-4" />
           </button>
 
           <button
             type="button"
-            title="Mettre en attente"
-            className="flex h-9 w-9 items-center justify-center rounded-full text-[#444746] dark:text-[#c4c7c5] hover:bg-[#f1f3f4] dark:hover:bg-[#282a2c] transition-colors"
+            onClick={() => onSnooze?.(message.uid)}
+            disabled={!onSnooze}
+            title="Mettre en attente jusqu'à demain 08:00"
+            className="flex h-9 w-9 items-center justify-center rounded-full text-[#444746] dark:text-[#c4c7c5] hover:bg-[#f1f3f4] dark:hover:bg-[#282a2c] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <Clock className="h-4 w-4" />
           </button>
 
           <button
             type="button"
+            onClick={handleAddToTasks}
             title="Ajouter aux tâches"
             className="flex h-9 w-9 items-center justify-center rounded-full text-[#444746] dark:text-[#c4c7c5] hover:bg-[#f1f3f4] dark:hover:bg-[#282a2c] transition-colors"
           >
@@ -763,7 +890,7 @@ export default function MessageReader({
             type="button"
             title="Améliorer le texte"
             onClick={handleRewrite}
-            className="flex h-9 w-9 items-center justify-center rounded-full bg-[#c0843c] hover:#a8703f text-white px-3 py-1.5 text-xs font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-[#c0843c] hover:bg-[#a8703f] text-white px-3 py-1.5 text-xs font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             disabled={rewriteLoading}
           >
             <Bot className="h-4 w-4" />
@@ -776,21 +903,113 @@ export default function MessageReader({
 
           <div className="mx-1 h-5 w-[1px] bg-[#e0e2e7] dark:bg-[#3c4043]" />
 
-          <button
-            type="button"
-            title="Déplacer vers"
-            className="flex h-9 w-9 items-center justify-center rounded-full text-[#444746] dark:text-[#c4c7c5] hover:bg-[#f1f3f4] dark:hover:bg-[#282a2c] transition-colors"
-          >
-            <FolderInput className="h-4 w-4" />
-          </button>
+          <div className="relative" ref={moveMenuRef}>
+            <button
+              type="button"
+              onClick={() => {
+                setMoveMenuOpen((prev) => !prev);
+                setLabelsMenuOpen(false);
+              }}
+              title="Déplacer vers"
+              aria-haspopup="menu"
+              aria-expanded={moveMenuOpen}
+              className={`flex h-9 w-9 items-center justify-center rounded-full text-[#444746] dark:text-[#c4c7c5] hover:bg-[#f1f3f4] dark:hover:bg-[#282a2c] transition-colors ${
+                moveMenuOpen ? 'bg-[#f1f3f4] dark:bg-[#282a2c]' : ''
+              }`}
+            >
+              <FolderInput className="h-4 w-4" />
+            </button>
 
-          <button
-            type="button"
-            title="Libellés"
-            className="flex h-9 w-9 items-center justify-center rounded-full text-[#444746] dark:text-[#c4c7c5] hover:bg-[#f1f3f4] dark:hover:bg-[#282a2c] transition-colors"
-          >
-            <Tag className="h-4 w-4" />
-          </button>
+            {moveMenuOpen && (
+              <div
+                role="menu"
+                aria-label="Déplacer le message vers un dossier"
+                className="absolute left-0 top-10 z-50 w-60 rounded-lg border border-[#e0e2e7] bg-white py-1 text-xs text-[#1f1f1f] shadow-xl animate-fade-slide dark:border-[#3c4043] dark:bg-[#202124] dark:text-[#e8eaed]"
+              >
+                <p className="px-3 py-1.5 text-[10.5px] font-semibold uppercase tracking-wide text-[#5f6368] dark:text-[#9aa0a6]">
+                  Déplacer vers
+                </p>
+                <div className="max-h-64 overflow-y-auto">
+                  {moveTargets.length === 0 ? (
+                    <p className="px-3 py-2 text-[#5f6368] dark:text-[#9aa0a6]">
+                      Aucun autre dossier.
+                    </p>
+                  ) : (
+                    moveTargets.map((folder) => (
+                      <button
+                        key={folder.id}
+                        type="button"
+                        role="menuitem"
+                        onClick={() => {
+                          setMoveMenuOpen(false);
+                          onMove?.(message.uid, folder.id);
+                        }}
+                        className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-[#f1f3f4] dark:hover:bg-[#282a2c]"
+                      >
+                        <FolderInput className="h-3.5 w-3.5 shrink-0 text-[#5f6368] dark:text-[#9aa0a6]" />
+                        <span className="truncate">{folder.label}</span>
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="relative" ref={labelsMenuRef}>
+            <button
+              type="button"
+              onClick={() => {
+                setLabelsMenuOpen((prev) => !prev);
+                setMoveMenuOpen(false);
+              }}
+              title="Libellés"
+              aria-haspopup="menu"
+              aria-expanded={labelsMenuOpen}
+              className={`flex h-9 w-9 items-center justify-center rounded-full text-[#444746] dark:text-[#c4c7c5] hover:bg-[#f1f3f4] dark:hover:bg-[#282a2c] transition-colors ${
+                labelsMenuOpen ? 'bg-[#f1f3f4] dark:bg-[#282a2c]' : ''
+              }`}
+            >
+              <Tag className="h-4 w-4" />
+            </button>
+
+            {labelsMenuOpen && (
+              <div
+                role="menu"
+                aria-label="Étiquettes du message"
+                className="absolute left-0 top-10 z-50 w-52 rounded-lg border border-[#e0e2e7] bg-white py-1 text-xs text-[#1f1f1f] shadow-xl animate-fade-slide dark:border-[#3c4043] dark:bg-[#202124] dark:text-[#e8eaed]"
+              >
+                <p className="px-3 py-1.5 text-[10.5px] font-semibold uppercase tracking-wide text-[#5f6368] dark:text-[#9aa0a6]">
+                  Étiquettes
+                </p>
+                {MESSAGE_LABELS.map((label) => {
+                  const active = keywords.includes(label.id);
+                  return (
+                    <button
+                      key={label.id}
+                      type="button"
+                      role="menuitemcheckbox"
+                      aria-checked={active}
+                      disabled={labelBusy === label.id}
+                      onClick={() => void handleToggleLabel(label.id, label.label)}
+                      className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-[#f1f3f4] disabled:opacity-60 dark:hover:bg-[#282a2c]"
+                    >
+                      <span
+                        className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
+                          active
+                            ? 'border-[#0b57d0] bg-[#0b57d0] text-white'
+                            : 'border-[#5f6368] text-transparent dark:border-[#9aa0a6]'
+                        }`}
+                      >
+                        <Check className="h-3 w-3 stroke-[3]" />
+                      </span>
+                      <span className="flex-1">{label.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="flex items-center gap-1">
@@ -1277,8 +1496,17 @@ export default function MessageReader({
             {message.subject || '(sans objet)'}
           </h1>
           <span className="rounded bg-[#f0f4f9] dark:bg-[#2a2b2e] px-2 py-0.5 text-xs font-medium text-[#444746] dark:text-[#c4c7c5] border border-[#dadce0] dark:border-[#444746]">
-            Boîte de réception
+            {currentFolderLabel}
           </span>
+          {MESSAGE_LABELS.filter((label) => keywords.includes(label.id)).map((label) => (
+            <span
+              key={label.id}
+              className="inline-flex items-center gap-1 rounded-full border border-[#c2d7f5] bg-[#eaf1fb] px-2 py-0.5 text-[11px] font-medium text-[#0b57d0] dark:border-[#004a77] dark:bg-[#004a77]/30 dark:text-[#a8c7fa]"
+            >
+              <Tag className="h-3 w-3" />
+              {label.label}
+            </span>
+          ))}
         </div>
 
         <button

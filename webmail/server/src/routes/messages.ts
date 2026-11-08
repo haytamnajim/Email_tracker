@@ -71,6 +71,23 @@ messagesRouter.get(
   }),
 );
 
+/** POST /api/messages/:uid/move — déplace un message (action utilisateur explicite). */
+messagesRouter.post(
+  '/:uid/move',
+  asyncHandler(async (req, res) => {
+    const uid = Number(req.params.uid);
+    if (!Number.isInteger(uid) || uid < 1) {
+      throw new MailError('Identifiant de message invalide.', 400);
+    }
+    const { from, to } = req.body as { from?: unknown; to?: unknown };
+    if (typeof from !== 'string' || from.trim() === '' || typeof to !== 'string' || to.trim() === '') {
+      throw new MailError('Dossiers source et destination requis.', 400);
+    }
+    await service.moveMessage(uid, from.trim(), to.trim());
+    res.json({ success: true, from: from.trim(), to: to.trim() });
+  }),
+);
+
 /** GET /api/messages/:uid/attachments/:index — téléchargement d'une pièce jointe. */
 messagesRouter.get(
   '/:uid/attachments/:index',
