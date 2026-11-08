@@ -32,6 +32,7 @@ import {
   User,
   Copy,
   Check,
+  Languages,
 } from 'lucide-react';
 import type { MessageDetail, Theme } from '../types';
 import {
@@ -220,6 +221,9 @@ export default function MessageReader({
   onCancelReply,
   onCancelSummary,
   onNotify,
+  onExtractTasks,
+  onTranslate,
+  onRewrite,
 }: MessageReaderProps) {
   const [allowRemoteImages, setAllowRemoteImages] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -298,6 +302,7 @@ export default function MessageReader({
     if (!message) return;
     setExtractTasksLoading(true);
     setExtractTasksError(null);
+    setExtractTasks([]);
     try {
       const result = await extractTasksWithN8n(message);
       if (result.success && result.tasks) {
@@ -306,10 +311,12 @@ export default function MessageReader({
         onExtractTasks?.(result.tasks);
       } else {
         setExtractTasksError(result.error || 'Erreur inconnue');
+        setExtractTasksOpen(true);
       }
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : String(err);
       setExtractTasksError(errorMessage);
+      setExtractTasksOpen(true);
     } finally {
       setExtractTasksLoading(false);
     }
@@ -329,10 +336,12 @@ export default function MessageReader({
         onTranslate?.(result.translated);
       } else {
         setTranslateError(result.error || 'Erreur inconnue');
+        setTranslateOpen(true);
       }
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : String(err);
       setTranslateError(errorMessage);
+      setTranslateOpen(true);
     } finally {
       setTranslateLoading(false);
     }
@@ -341,21 +350,30 @@ export default function MessageReader({
   /** Réécrit le brouillon (pour les réponses) */
   const handleRewrite = async () => {
     if (!message) return;
+    const draft = replyText.trim() || message.text || message.html || '';
+    if (!draft.trim()) {
+      setRewriteError("Aucun texte à améliorer dans ce message.");
+      setRewriteOpen(true);
+      return;
+    }
     setRewriteLoading(true);
     setRewriteError(null);
     setRewriteResult(null);
+    const toneMap = { professionnel: 'professionnel', amical: 'positif', court: 'concise' } as const;
     try {
-      const result = await rewriteDraftWithN8n(message.text || message.html || '', 'professionnel');
+      const result = await rewriteDraftWithN8n(draft, toneMap[selectedTone]);
       if (result.success && result.rewritten) {
         setRewriteResult(result.rewritten);
         setRewriteOpen(true);
         onRewrite?.(result.rewritten);
       } else {
         setRewriteError(result.error || 'Erreur inconnue');
+        setRewriteOpen(true);
       }
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : String(err);
       setRewriteError(errorMessage);
+      setRewriteOpen(true);
     } finally {
       setRewriteLoading(false);
     }
@@ -731,7 +749,7 @@ export default function MessageReader({
             className="flex h-9 w-9 items-center justify-center rounded-full bg-[#7c3aed] hover:bg-[#6d28d9] text-white px-3 py-1.5 text-xs font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             disabled={translateLoading}
           >
-            <Translate className="h-4 w-4" />
+            <Languages className="h-4 w-4" />
             {translateLoading ? (
               <Sparkles className="h-3.5 w-3.5 animate-spin" />
             ) : (
@@ -1066,6 +1084,189 @@ export default function MessageReader({
               {summaryText}
             </div>
           ) : null}
+        </div>
+      )}
+
+      {/* ── Tâches et échéances extraites par l'IA ── */}
+      {(extractTasksOpen || extractTasksError) && (
+        <div className="mx-6 mt-3 rounded-2xl border border-blue-200/80 dark:border-blue-900/50 bg-gradient-to-br from-blue-50/80 via-white to-cyan-50/40 dark:from-[#131b2e] dark:via-[#1c222e] dark:to-[#132029] p-4 shadow-sm animate-fade-slide">
+          <div className="flex items-center justify-between pb-2 mb-2 border-b border-blue-100 dark:border-blue-900/40">
+            <div className="flex items-center gap-2">
+              <div className="flex h-6 w-6 items-center justify-center rounded-md bg-[#0b57d0] text-white">
+                <CheckSquare className="h-3.5 w-3.5" />
+              </div>
+              <span className="text-xs font-bold text-[#0b57d0] dark:text-[#a8c7fa] tracking-wide uppercase">
+                Tâches et échéances (IA)
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => { setExtractTasksOpen(false); setExtractTasksError(null); }}
+              title="Fermer les tâches extraites"
+              className="flex h-6 w-6 items-center justify-center rounded-full text-[#5f6368] dark:text-[#9aa0a6] hover:bg-black/5 dark:hover:bg-white/10 transition-colors duration-150"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+
+          {extractTasksError ? (
+            <p className="text-xs text-red-600 dark:text-red-300 py-1">{extractTasksError}</p>
+          ) : extractTasks.length === 0 ? (
+            <p className="text-xs text-[#5f6368] dark:text-[#9aa0a6] py-1">Aucune tâche détectée dans ce message.</p>
+          ) : (
+            <ul className="space-y-2">
+              {extractTasks.map((task, index) => (
+                <li
+                  key={`${task.title}-${index}`}
+                  className="flex items-start gap-2 rounded-xl border border-blue-100/80 dark:border-blue-900/40 bg-white/70 dark:bg-[#1e1f22]/60 px-3 py-2"
+                >
+                  <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-[#0b57d0]/10 text-[#0b57d0] dark:bg-[#a8c7fa]/15 dark:text-[#a8c7fa]">
+                    <Check className="h-3 w-3" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-medium text-[#1f1f1f] dark:text-[#e8eaed]">{task.title}</p>
+                    {task.description && (
+                      <p className="mt-0.5 text-[11px] text-[#5f6368] dark:text-[#9aa0a6]">{task.description}</p>
+                    )}
+                    <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                      {task.deadline && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-[#eaf1fb] dark:bg-[#004a77]/30 px-2 py-0.5 text-[10.5px] font-medium text-[#0b57d0] dark:text-[#a8c7fa]">
+                          <CalendarClock className="h-3 w-3" />
+                          {task.deadline}
+                        </span>
+                      )}
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-[10.5px] font-medium ${
+                          task.priority === 'high'
+                            ? 'bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300'
+                            : task.priority === 'low'
+                              ? 'bg-slate-100 text-slate-600 dark:bg-slate-800/60 dark:text-slate-300'
+                              : 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300'
+                        }`}
+                      >
+                        {task.priority === 'high'
+                          ? 'Priorité haute'
+                          : task.priority === 'low'
+                            ? 'Priorité basse'
+                            : 'Priorité moyenne'}
+                      </span>
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
+      {/* ── Traduction IA du message ── */}
+      {(translateOpen || translateError) && (
+        <div className="mx-6 mt-3 rounded-2xl border border-purple-200/80 dark:border-purple-900/50 bg-gradient-to-br from-purple-50/80 via-white to-indigo-50/40 dark:from-[#1a1327] dark:via-[#1c1a24] dark:to-[#17122a] p-4 shadow-sm animate-fade-slide">
+          <div className="flex items-center justify-between pb-2 mb-2 border-b border-purple-100 dark:border-purple-900/40">
+            <div className="flex items-center gap-2">
+              <div className="flex h-6 w-6 items-center justify-center rounded-md bg-[#7c3aed] text-white">
+                <Languages className="h-3.5 w-3.5" />
+              </div>
+              <span className="text-xs font-bold text-[#6d28d9] dark:text-[#c4b5fd] tracking-wide uppercase">
+                Traduction (IA)
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => { setTranslateOpen(false); setTranslateError(null); }}
+              title="Fermer la traduction"
+              className="flex h-6 w-6 items-center justify-center rounded-full text-[#5f6368] dark:text-[#9aa0a6] hover:bg-black/5 dark:hover:bg-white/10 transition-colors duration-150"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+
+          {translateError ? (
+            <p className="text-xs text-red-600 dark:text-red-300 py-1">{translateError}</p>
+          ) : (
+            <div className="flex items-start gap-3">
+              <p className="flex-1 whitespace-pre-wrap text-xs leading-relaxed text-[#1f1f1f] dark:text-[#e8eaed]">
+                {translateResult}
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!translateResult) return;
+                  void navigator.clipboard
+                    .writeText(translateResult)
+                    .then(() => onNotify?.('Traduction copiée.'))
+                    .catch(() => undefined);
+                }}
+                title="Copier la traduction"
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[#5f6368] dark:text-[#9aa0a6] hover:bg-black/5 dark:hover:bg-white/10 transition-colors duration-150"
+              >
+                <Copy className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Brouillon amélioré par l'IA ── */}
+      {(rewriteOpen || rewriteError) && (
+        <div className="mx-6 mt-3 rounded-2xl border border-amber-200/80 dark:border-amber-900/50 bg-gradient-to-br from-amber-50/80 via-white to-orange-50/40 dark:from-[#241a10] dark:via-[#1f1d1a] dark:to-[#24170f] p-4 shadow-sm animate-fade-slide">
+          <div className="flex items-center justify-between pb-2 mb-2 border-b border-amber-100 dark:border-amber-900/40">
+            <div className="flex items-center gap-2">
+              <div className="flex h-6 w-6 items-center justify-center rounded-md bg-[#c0843c] text-white">
+                <Bot className="h-3.5 w-3.5" />
+              </div>
+              <span className="text-xs font-bold text-[#a8703f] dark:text-[#f3c78a] tracking-wide uppercase">
+                Texte amélioré (IA)
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => { setRewriteOpen(false); setRewriteError(null); }}
+              title="Fermer le texte amélioré"
+              className="flex h-6 w-6 items-center justify-center rounded-full text-[#5f6368] dark:text-[#9aa0a6] hover:bg-black/5 dark:hover:bg-white/10 transition-colors duration-150"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+
+          {rewriteError ? (
+            <p className="text-xs text-red-600 dark:text-red-300 py-1">{rewriteError}</p>
+          ) : (
+            <>
+              <p className="whitespace-pre-wrap text-xs leading-relaxed text-[#1f1f1f] dark:text-[#e8eaed]">
+                {rewriteResult}
+              </p>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!rewriteResult) return;
+                    setReplyText(rewriteResult);
+                    setReplyMode('reply');
+                    setRewriteOpen(false);
+                  }}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-[#c0843c] px-3 py-1.5 text-[11.5px] font-semibold text-white hover:bg-[#a8703f] transition-colors duration-150"
+                >
+                  <CornerUpLeft className="h-3.5 w-3.5" />
+                  Utiliser comme réponse
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!rewriteResult) return;
+                    void navigator.clipboard
+                      .writeText(rewriteResult)
+                      .then(() => onNotify?.('Texte amélioré copié.'))
+                      .catch(() => undefined);
+                  }}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-[#dadce0] dark:border-[#444746] px-3 py-1.5 text-[11.5px] font-medium text-[#444746] dark:text-[#c4c7c5] hover:bg-black/5 dark:hover:bg-white/10 transition-colors duration-150"
+                >
+                  <Copy className="h-3.5 w-3.5" />
+                  Copier
+                </button>
+              </div>
+            </>
+          )}
         </div>
       )}
 
@@ -1484,7 +1685,8 @@ export default function MessageReader({
           </div>
         )}
       </div>
-      </article>
+
+      <SendFlight phase={sendPhase} />
     </>
   );
 }

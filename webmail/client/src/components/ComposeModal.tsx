@@ -15,9 +15,11 @@ import {
   Underline,
   AlignLeft,
   AlertCircle,
+  Sparkles,
 } from 'lucide-react';
 import SendFlight, { SEND_DONE_MS, SEND_FLIGHT_MS, type SendPhase } from './SendFlight';
 import SendButton from './SendButton';
+import { rewriteDraftWithN8n } from '../api';
 
 interface ComposeModalProps {
   isOpen: boolean;
@@ -49,6 +51,8 @@ export default function ComposeModal({
   const [isSending, setIsSending] = useState(false);
   const [sendPhase, setSendPhase] = useState<SendPhase>('idle');
   const [sendError, setSendError] = useState<string | null>(null);
+  const [isRewriting, setIsRewriting] = useState(false);
+  const [rewriteError, setRewriteError] = useState<string | null>(null);
 
   // La fenêtre reste montée entre deux ouvertures : on ne synchronise que
   // lorsqu'un brouillon préparé change (relance), pas à chaque réouverture.
@@ -111,6 +115,25 @@ export default function ComposeModal({
       setSendError(err instanceof Error ? err.message : String(err));
     } finally {
       setIsSending(false);
+    }
+  };
+
+  /** Améliore le brouillon avec l'IA sans changer son intention. */
+  const handleRewriteDraft = async () => {
+    if (!body.trim() || isRewriting) return;
+    setIsRewriting(true);
+    setRewriteError(null);
+    try {
+      const result = await rewriteDraftWithN8n(body, 'professionnel');
+      if (result.success && result.rewritten) {
+        setBody(result.rewritten);
+      } else {
+        setRewriteError(result.error || "La réécriture n'a pas pu aboutir.");
+      }
+    } catch (err: unknown) {
+      setRewriteError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setIsRewriting(false);
     }
   };
 
@@ -301,6 +324,21 @@ export default function ComposeModal({
             className="flex-1 w-full resize-none p-4 bg-transparent text-sm text-[#1f1f1f] dark:text-[#e8eaed] outline-none"
           />
 
+          {rewriteError && (
+            <div className="mx-4 mb-2 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-900/40 dark:bg-red-950/30 dark:text-red-300">
+              <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+              <span className="flex-1">{rewriteError}</span>
+              <button
+                type="button"
+                onClick={() => setRewriteError(null)}
+                title="Fermer l'erreur"
+                className="flex h-5 w-5 items-center justify-center rounded-full hover:bg-black/5 dark:hover:bg-white/10"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+          )}
+
           {/* ── Barre d'action inférieure Gmail ── */}
           <div className="flex h-14 shrink-0 items-center justify-between gap-3 border-t border-[#e0e2e7] bg-[#f8fafd] px-4 dark:border-[#3c4043] dark:bg-[#282a2c]/50">
             {/* Action principale : un seul bouton, sans menu mort */}
@@ -308,6 +346,16 @@ export default function ComposeModal({
 
             {/* Outils multimédias et pièces jointes */}
             <div className="flex items-center gap-1 text-[#5f6368] dark:text-[#9aa0a6]">
+              <button
+                type="button"
+                onClick={handleRewriteDraft}
+                disabled={!body.trim() || isRewriting}
+                title="Améliorer le texte avec l'IA"
+                className="inline-flex items-center gap-1.5 rounded-full bg-[#eaf1fb] px-3 py-1.5 text-xs font-medium text-[#0b57d0] hover:bg-[#d3e3fd] disabled:cursor-not-allowed disabled:opacity-50 dark:bg-[#004a77]/25 dark:text-[#a8c7fa] dark:hover:bg-[#004a77]/40 transition-colors duration-150"
+              >
+                <Sparkles className={`h-3.5 w-3.5 ${isRewriting ? 'animate-spin' : ''}`} />
+                <span>{isRewriting ? 'Amélioration…' : 'Améliorer le texte'}</span>
+              </button>
               <button
                 type="button"
                 onClick={() => setShowFormatting((prev) => !prev)}

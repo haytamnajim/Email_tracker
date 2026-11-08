@@ -207,6 +207,45 @@ export function getN8nConfig(): Promise<{
   }>(`${BASE}/n8n/config`);
 }
 
+export interface DetectMeetingRequest {
+  webhookUrl?: string;
+  message: {
+    uid: number;
+    from: { name?: string; address?: string };
+    subject: string;
+    date: string;
+    text?: string;
+    html?: string | null;
+  };
+}
+
+export interface DetectMeetingResponse {
+  success: boolean;
+  isMeeting: boolean;
+  confidence: number;
+  reason: string;
+  suggestedTitle?: string;
+  /** Créneau proposé, AAAA-MM-JJ. */
+  suggestedDate?: string;
+  /** Créneau proposé, HH:MM. */
+  suggestedTime?: string;
+  source: 'n8n' | 'fallback';
+}
+
+export function detectMeetingWithAI(payload: DetectMeetingRequest): Promise<DetectMeetingResponse> {
+  return request<DetectMeetingResponse>(`${BASE}/n8n/detect-meeting`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: jsonBody(payload),
+  }).catch(() => ({
+    success: false,
+    isMeeting: false,
+    confidence: 0,
+    reason: 'Erreur réseau lors de la détection.',
+    source: 'fallback' as const,
+  }));
+}
+
 /** Réponse de extraction de tâches */
 export interface ExtractTasksResponse {
   success: boolean;
@@ -322,6 +361,7 @@ export function markMessagesFlagged(uids: number[], folder: string, flagged: boo
     headers: { 'Content-Type': 'application/json' },
     body: jsonBody({ uids, folder, value: flagged }),
   });
+}
 
 // ─────────────────────────────────────────────────────────────────
 // Relances : messages envoyés restés sans réponse

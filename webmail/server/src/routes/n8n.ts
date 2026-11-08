@@ -691,18 +691,6 @@ interface ExtractTasksPayload {
   };
 }
 
-interface ExtractTasksResponse {
-  success: boolean;
-  tasks: Array<{
-    title: string;
-    deadline?: string;
-    priority?: 'low' | 'medium' | 'high';
-    description?: string;
-  }>;
-  source: 'n8n' | 'fallback';
-  error?: string;
-}
-
 /** Route POST /api/n8n/extract-tasks */
 n8nRouter.post('/extract-tasks', async (req: Request, res: Response) => {
   const { webhookUrl, message } = req.body as ExtractTasksPayload;
@@ -781,10 +769,11 @@ Réponds UNIQUEMENT avec un JSON de ce format (pas de markdown) :
     }
 
     let tasks: Array<{ title: string; deadline?: string; priority?: string; description?: string }>;
+    const tasksResult = (result ?? {}) as { tasks?: unknown };
     if (Array.isArray(result)) {
       tasks = result;
-    } else if (result && Array.isArray(result.tasks)) {
-      tasks = result.tasks;
+    } else if (Array.isArray(tasksResult.tasks)) {
+      tasks = tasksResult.tasks as Array<{ title: string; deadline?: string; priority?: string; description?: string }>;
     } else {
       tasks = [];
     }
@@ -873,13 +862,6 @@ interface TranslateEmailPayload {
   };
 }
 
-interface TranslateEmailResponse {
-  success: boolean;
-  translated?: string;
-  source: 'n8n' | 'fallback';
-  error?: string;
-}
-
 /** Route POST /api/n8n/translate-email */
 n8nRouter.post('/translate-email', async (req: Request, res: Response) => {
   const { webhookUrl, message } = req.body as TranslateEmailPayload;
@@ -952,13 +934,14 @@ n8nRouter.post('/translate-email', async (req: Request, res: Response) => {
     }
 
     // Le résultat peut être un string direct ou un objet { translated: "..." }
+    const translateResult = (result ?? {}) as { translated?: unknown; text?: unknown };
     let translated: string | undefined;
     if (typeof result === 'string') {
       translated = result;
-    } else if (result && typeof result.translated === 'string') {
-      translated = result.translated;
-    } else if (result && typeof result.text === 'string') {
-      translated = result.text;
+    } else if (typeof translateResult.translated === 'string') {
+      translated = translateResult.translated;
+    } else if (typeof translateResult.text === 'string') {
+      translated = translateResult.text;
     } else {
       translated = String(result);
     }
@@ -982,13 +965,6 @@ interface RewriteDraftPayload {
   body: string;
   tone?: 'professionnel' | 'concise' | 'positif' | 'decline';
   instructions?: string;
-}
-
-interface RewriteDraftResponse {
-  success: boolean;
-  rewritten?: string;
-  source: 'n8n' | 'fallback';
-  error?: string;
 }
 
 /** Route POST /api/n8n/rewrite-draft */
@@ -1051,12 +1027,13 @@ n8nRouter.post('/rewrite-draft', async (req: Request, res: Response) => {
     }
 
     let rewritten: string | undefined;
+    const rewriteResult = (result ?? {}) as { rewritten?: unknown; text?: unknown };
     if (typeof result === 'string') {
       rewritten = result;
-    } else if (result && typeof result.rewritten === 'string') {
-      rewritten = result.rewritten;
-    } else if (result && typeof result.text === 'string') {
-      rewritten = result.text;
+    } else if (typeof rewriteResult.rewritten === 'string') {
+      rewritten = rewriteResult.rewritten;
+    } else if (typeof rewriteResult.text === 'string') {
+      rewritten = rewriteResult.text;
     } else {
       rewritten = String(result);
     }
