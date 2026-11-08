@@ -9,6 +9,8 @@ import { n8nRouter } from './routes/n8n.ts';
 import { smtpRouter } from './routes/smtp.ts';
 import { flagsRouter } from './routes/flags.ts';
 import { followupsRouter } from './routes/followups.ts';
+import { snoozeRouter } from './routes/snooze.ts';
+import { startSnoozeScheduler } from './snooze.ts';
 
 const app = express();
 app.disable('x-powered-by');
@@ -36,6 +38,7 @@ app.use('/api/n8n', n8nRouter);
 app.use('/api/smtp', smtpRouter);
 app.use('/api/flags', flagsRouter);
 app.use('/api/followups', followupsRouter);
+app.use('/api/snooze', snoozeRouter);
 
 app.use('/api', (_req, res) => {
   res.status(404).json({ error: 'Route inconnue.' });
@@ -55,4 +58,5 @@ app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
 app.listen(config.port, '127.0.0.1', () => {
   const mode = config.demoMode ? 'mode démo (30 emails factices)' : 'connexion IMAP réelle';
   console.log(`API mail locale sur http://127.0.0.1:${config.port} — ${mode}`);
+  startSnoozeScheduler();
 });

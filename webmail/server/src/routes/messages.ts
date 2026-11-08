@@ -56,11 +56,78 @@ messagesRouter.get(
   }),
 );
 
+function parseUidList(value: unknown): number[] {
+  if (!Array.isArray(value)) return [];
+  return Array.from(
+    new Set(
+      value
+        .map((item) => Number(item))
+        .filter((uid) => Number.isInteger(uid) && uid > 0),
+    ),
+  );
+}
+
+function requiredFolder(value: unknown, name: string): string {
+  if (typeof value !== 'string' || value.trim() === '') {
+    throw new MailError(`Dossier ${name} requis.`, 400);
+  }
+  return value.trim();
+}
+
+function parseUntil(value: unknown): string {
+  if (typeof value !== 'string' || value.trim() === '') {
+    throw new MailError("Date d'échéance requise.", 400);
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    throw new MailError("Date d'échéance invalide.", 400);
+  }
+  const now = Date.now();
+  if (date.getTime() <= now - 60_000) {
+    throw new MailError("La date d'échéance doit être dans le futur.", 400);
+  }
+  if (date.getTime() > now + 366 * 24 * 3_600_000) {
+    throw new MailError("La date d'échéance dépasse un an.", 400);
+  }
+  return date.toISOString();
+}
+
 function pathParams(req: Request) {
   const uid = Number(req.params.uid);
   if (!Number.isInteger(uid) || uid < 1) throw new MailError('Identifiant de message invalide.', 400);
   return { uid, folder: folderFrom(req.query.folder) };
 }
+
+// ── Routes par lot ────────────────────────────────────────────────
+// Déclarées avant /:uid/... pour que « batch » ne soit pas pris pour un UID.
+
+/** POST /api/messages/batch/move — déplace plusieurs messages. */
+messagesRouter.post(
+  '/batch/move',
+  asyncHandler(async (req, res) => {
+    const uids = parseUidList(req.body?.uids);
+    const from = requiredFolder(req.body?.from, 'source');
+    const to = requiredFolder(req.body?.to, 'destination');
+    if (uids.length === 0) throw new MailError('Aucun message sélectionné.', 400);
+
+    const count = await service.moveMessages(uids, from, to);
+    res.json({ success: true, count, from, to });
+  }),
+);
+
+/** POST /api/messages/batch/snooze — met plusieurs messages en attente. */
+messagesRouter.post(
+  '/batch/snooze',
+  asyncHandler(async (req, res) => {
+    const uids = parseUidList(req.body?.uids);
+    const from = requiredFolder(req.body?.from, 'source');
+    const until = parseUntil(req.body?.until);
+    if (uids.length === 0) throw new MailError('Aucun message sélectionné.', 400);
+
+    const count = await service.snoozeMessages(uids, from, until);
+    res.json({ success: true, count, until });
+  }),
+);
 
 /** GET /api/messages/:uid — message complet (corps texte et HTML, pièces jointes). */
 messagesRouter.get(
@@ -75,16 +142,35 @@ messagesRouter.get(
 messagesRouter.post(
   '/:uid/move',
   asyncHandler(async (req, res) => {
-    const uid = Number(req.params.uid);
-    if (!Number.isInteger(uid) || uid < 1) {
-      throw new MailError('Identifiant de message invalide.', 400);
-    }
-    const { from, to } = req.body as { from?: unknown; to?: unknown };
-    if (typeof from !== 'string' || from.trim() === '' || typeof to !== 'string' || to.trim() === '') {
-      throw new MailError('Dossiers source et destination requis.', 400);
-    }
-    await service.moveMessage(uid, from.trim(), to.trim());
-    res.json({ success: true, from: from.trim(), to: to.trim() });
+    const { uid } = pathParams(req);
+    const from = requiredFolder(req.body?.from, 'source');
+    const to = requiredFolder(req.body?.to, 'destination');
+
+    await service.moveMessage(uid, from, to);
+    res.json({ success: true, from, to });
+  }),
+);
+
+/** POST /api/messages/:uid/snooze — met un message en attente jusqu'à une date. */
+messagesRouter.post(
+  '/:uid/snooze',
+  asyncHandler(async (req, res) => {
+    const { uid } = pathParams(req);
+    const from = requiredFolder(req.body?.from, 'source');
+    const until = parseUntil(req.body?.until);
+
+    await service.snoozeMessages([uid], from, until);
+    res.json({ success: true, until });
+  }),
+);
+
+/** POST /api/messages/:uid/unsnooze — annule la mise en attente et replace le message. */
+messagesRouter.post(
+  '/:uid/unsnooze',
+  asyncHandler(async (req, res) => {
+    const { uid } = pathParams(req);
+    await service.cancelSnooze(uid);
+    res.json({ success: true });
   }),
 );
 

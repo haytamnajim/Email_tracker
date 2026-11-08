@@ -24,10 +24,53 @@ import { useTheme } from './hooks/useTheme';
 import { categorizeMessage, countByCategory } from './utils/categories';
 import { classifyEmail } from './utils/classification';
 import type { EmailClass } from './utils/classification';
-import { sendEmailWithN8n, sendEmailWithSmtp, getSmtpStatus, markMessageRead, markMessageFlagged, moveMessage } from './api';
+import {
+  sendEmailWithN8n,
+  sendEmailWithSmtp,
+  getSmtpStatus,
+  markMessageRead,
+  markMessageFlagged,
+  markMessagesRead,
+  moveMessage,
+  moveMessages,
+  snoozeMessage,
+  snoozeMessages,
+  unsnoozeMessage,
+  setMessagesKeyword,
+} from './api';
 import type { FollowupCandidate } from './api';
 import { EMPTY_ADVANCED_FILTERS } from './types';
-import type { AdvancedFilters } from './types';
+import type { AdvancedFilters, Folder } from './types';
+
+interface PendingMoveAction {
+  timer: number;
+  uids: number[];
+}
+
+/** Cherche un dossier spécial IMAP, avec repli sur son libellé français. */
+function findSpecialFolder(
+  folders: Folder[],
+  specialUses: string[],
+  fallback: RegExp,
+): Folder | undefined {
+  return (
+    folders.find(
+      (folder) => folder.specialUse !== undefined && specialUses.includes(folder.specialUse),
+    ) ?? folders.find((folder) => fallback.test(`${folder.id} ${folder.name} ${folder.label}`))
+  );
+}
+
+function nextTomorrowAt8(): Date {
+  const date = new Date();
+  date.setDate(date.getDate() + 1);
+  date.setHours(8, 0, 0, 0);
+  return date;
+}
+
+function formatSnoozeDate(value: string | Date): string {
+  const date = typeof value === 'string' ? new Date(value) : value;
+  return new Intl.DateTimeFormat('fr-FR', { dateStyle: 'short', timeStyle: 'short' }).format(date);
+}
 
 export default function App() {
   const { theme, toggleTheme, setTheme } = useTheme();
@@ -59,6 +102,11 @@ export default function App() {
   const [readOverrides, setReadOverrides] = useState<Map<number, boolean>>(new Map());
   const [hiddenUids, setHiddenUids] = useState<Set<number>>(new Set());
 
+  // Actions différées (archivage/suppression avec 5 s d'annulation)
+  const pendingMovesRef = useRef<Map<string, PendingMoveAction>>(new Map());
+  const folderIdRef = useRef(folderId);
+  folderIdRef.current = folderId;
+
   // Toasts / Snackbars
   const [toasts, setToasts] = useState<ToastData[]>([]);
 
@@ -84,6 +132,15 @@ export default function App() {
   const dismissToast = useCallback((id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
+
+  // Nettoie les minuteurs d'action différée au démontage de l'application.
+  useEffect(
+    () => () => {
+      pendingMovesRef.current.forEach((pending) => window.clearTimeout(pending.timer));
+      pendingMovesRef.current.clear();
+    },
+    [],
+  );
 
   const openCompose = useCallback(() => {
     setComposeDraft({ to: '', subject: '', body: '' });
@@ -137,6 +194,17 @@ export default function App() {
   );
 
   const { folders, loading: foldersLoading, reload: reloadFolders } = useFolders(true);
+
+  // Dossiers spéciaux utilisés par les actions réelles (archiver, supprimer).
+  const archiveFolder = useMemo(
+    () =>
+      findSpecialFolder(folders, ['\\Archive', '\\All'], /archive|all mail|tous les messages/i),
+    [folders],
+  );
+  const trashFolder = useMemo(
+    () => findSpecialFolder(folders, ['\\Trash'], /corbeille|trash|deleted|supprimés/i),
+    [folders],
+  );
 
   const {
     items: rawItems,
@@ -399,35 +467,110 @@ export default function App() {
     });
   }, [addToast]);
 
-  // Actions rapides et par lot
-  const handleArchive = useCallback(
-    (uid: number) => {
-      setHiddenUids((prev) => new Set(prev).add(uid));
-      if (selectedUid === uid) setSelectedUid(null);
-      addToast('Conversation archivée.', 'Annuler', () => {
+  // ── Actions différées : l'écriture IMAP part après 5 s, annulable ──
+  const scheduleMove = useCallback(
+    (options: {
+      uids: number[];
+      from: string;
+      to: string;
+      viewFolder: string;
+      pendingMessage: string;
+      successMessage: string;
+    }) => {
+      const uids = Array.from(new Set(options.uids));
+      if (uids.length === 0) return;
+      const actionId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+      const restore = () => {
+        if (folderIdRef.current !== options.viewFolder) return;
         setHiddenUids((prev) => {
           const next = new Set(prev);
-          next.delete(uid);
+          uids.forEach((uid) => next.delete(uid));
           return next;
         });
+      };
+
+      setHiddenUids((prev) => new Set([...prev, ...uids]));
+      setSelectedUid((current) => (current !== null && uids.includes(current) ? null : current));
+
+      addToast(options.pendingMessage, 'Annuler', () => {
+        const pending = pendingMovesRef.current.get(actionId);
+        if (!pending) return;
+        window.clearTimeout(pending.timer);
+        pendingMovesRef.current.delete(actionId);
+        restore();
+        addToast('Action annulée.');
+      });
+
+      const timer = window.setTimeout(() => {
+        pendingMovesRef.current.delete(actionId);
+        void moveMessages(uids, options.from, options.to)
+          .then(() => {
+            addToast(options.successMessage);
+            reloadFolders();
+            reloadMessages();
+          })
+          .catch((error: unknown) => {
+            restore();
+            addToast(error instanceof Error ? error.message : "L'action a échoué.");
+          });
+      }, 5000);
+
+      pendingMovesRef.current.set(actionId, { timer, uids });
+    },
+    [addToast, reloadFolders, reloadMessages],
+  );
+
+  /** Dossier réel du message, y compris dans les vues virtuelles (suivis, importants). */
+  const sourceFolderFor = useCallback(
+    (uid: number) => (rawMessage?.uid === uid ? rawMessage.folder : effectiveImapFolder),
+    [rawMessage, effectiveImapFolder],
+  );
+
+  const handleArchive = useCallback(
+    (uid: number) => {
+      if (!archiveFolder) {
+        addToast("Dossier d'archives introuvable sur ce compte.");
+        return;
+      }
+      const from = sourceFolderFor(uid);
+      if (from === archiveFolder.id) {
+        addToast('Ce message est déjà archivé.');
+        return;
+      }
+      scheduleMove({
+        uids: [uid],
+        from,
+        to: archiveFolder.id,
+        viewFolder: folderId,
+        pendingMessage: 'Archivage dans 5 secondes…',
+        successMessage: 'Conversation archivée.',
       });
     },
-    [selectedUid, addToast],
+    [archiveFolder, sourceFolderFor, folderId, scheduleMove, addToast],
   );
 
   const handleDelete = useCallback(
     (uid: number) => {
-      setHiddenUids((prev) => new Set(prev).add(uid));
-      if (selectedUid === uid) setSelectedUid(null);
-      addToast('Conversation placée dans la corbeille.', 'Annuler', () => {
-        setHiddenUids((prev) => {
-          const next = new Set(prev);
-          next.delete(uid);
-          return next;
-        });
+      if (!trashFolder) {
+        addToast('Dossier Corbeille introuvable sur ce compte.');
+        return;
+      }
+      const from = sourceFolderFor(uid);
+      if (from === trashFolder.id) {
+        addToast('Ce message est déjà dans la Corbeille.');
+        return;
+      }
+      scheduleMove({
+        uids: [uid],
+        from,
+        to: trashFolder.id,
+        viewFolder: folderId,
+        pendingMessage: 'Déplacement vers la Corbeille dans 5 secondes…',
+        successMessage: 'Conversation placée dans la Corbeille.',
       });
     },
-    [selectedUid, addToast],
+    [trashFolder, sourceFolderFor, folderId, scheduleMove, addToast],
   );
 
   const handleToggleRead = useCallback(
@@ -446,29 +589,56 @@ export default function App() {
   );
 
   const handleSnooze = useCallback(
-    (uid: number) => {
-      setHiddenUids((prev) => new Set(prev).add(uid));
-      if (selectedUid === uid) setSelectedUid(null);
-      addToast('Message mis en attente jusqu’à demain 08:00.', 'Annuler', () => {
+    (uid: number, until = nextTomorrowAt8().toISOString(), label = formatSnoozeDate(until)) => {
+      const from = sourceFolderFor(uid);
+      const viewFolder = folderId;
+      const restore = () => {
+        if (folderIdRef.current !== viewFolder) return;
         setHiddenUids((prev) => {
           const next = new Set(prev);
           next.delete(uid);
           return next;
         });
-      });
+      };
+
+      setHiddenUids((prev) => new Set(prev).add(uid));
+      setSelectedUid((current) => (current === uid ? null : current));
+
+      void snoozeMessage(uid, from, until)
+        .then(() => {
+          addToast(`Message mis en attente jusqu’au ${label}.`, 'Annuler', () => {
+            void unsnoozeMessage(uid)
+              .then(() => {
+                restore();
+                reloadFolders();
+                reloadMessages();
+                addToast('Message sorti de la mise en attente.');
+              })
+              .catch((error: unknown) => {
+                addToast(
+                  error instanceof Error ? error.message : 'Annulation impossible.',
+                );
+              });
+          });
+          reloadFolders();
+          reloadMessages();
+        })
+        .catch((error: unknown) => {
+          restore();
+          addToast(error instanceof Error ? error.message : 'Mise en attente impossible.');
+        });
     },
-    [selectedUid, addToast],
+    [sourceFolderFor, folderId, addToast, reloadFolders, reloadMessages],
   );
 
   const handleMoveMessage = useCallback(
     (uid: number, targetFolder: string) => {
-      const sourceFolder =
-        selectedUid === uid && rawMessage?.folder ? rawMessage.folder : effectiveImapFolder;
+      const sourceFolder = sourceFolderFor(uid);
       const targetLabel =
         folders.find((folder) => folder.id === targetFolder)?.label ?? targetFolder;
 
       setHiddenUids((prev) => new Set(prev).add(uid));
-      if (selectedUid === uid) setSelectedUid(null);
+      setSelectedUid((current) => (current === uid ? null : current));
 
       void moveMessage(uid, sourceFolder, targetFolder)
         .then(() => {
@@ -485,70 +655,189 @@ export default function App() {
           addToast(err instanceof Error ? err.message : 'Déplacement impossible.');
         });
     },
-    [
-      selectedUid,
-      rawMessage,
-      effectiveImapFolder,
-      folders,
-      addToast,
-      reloadFolders,
-      reloadMessages,
-    ],
+    [sourceFolderFor, folders, addToast, reloadFolders, reloadMessages],
   );
 
-  // Batch actions
+  // ── Actions par lot ──────────────────────────────────────────────
   const handleBatchArchive = useCallback(() => {
-    const uidsToHide = Array.from(checkedUids);
-    setHiddenUids((prev) => new Set([...prev, ...uidsToHide]));
+    const uids = Array.from(checkedUids);
+    if (uids.length === 0) return;
+    if (!archiveFolder) {
+      addToast("Dossier d'archives introuvable sur ce compte.");
+      return;
+    }
+    if (effectiveImapFolder === archiveFolder.id) {
+      addToast('Les messages sont déjà archivés.');
+      return;
+    }
     setCheckedUids(new Set());
-    addToast(`${uidsToHide.length} conversation(s) archivée(s).`, 'Annuler', () => {
-      setHiddenUids((prev) => {
-        const next = new Set(prev);
-        uidsToHide.forEach((u) => next.delete(u));
-        return next;
-      });
+    scheduleMove({
+      uids,
+      from: effectiveImapFolder,
+      to: archiveFolder.id,
+      viewFolder: folderId,
+      pendingMessage: `${uids.length} conversation(s) seront archivées dans 5 secondes…`,
+      successMessage: `${uids.length} conversation(s) archivée(s).`,
     });
-  }, [checkedUids, addToast]);
+  }, [checkedUids, archiveFolder, effectiveImapFolder, folderId, scheduleMove, addToast]);
 
   const handleBatchDelete = useCallback(() => {
-    const uidsToHide = Array.from(checkedUids);
-    setHiddenUids((prev) => new Set([...prev, ...uidsToHide]));
+    const uids = Array.from(checkedUids);
+    if (uids.length === 0) return;
+    if (!trashFolder) {
+      addToast('Dossier Corbeille introuvable sur ce compte.');
+      return;
+    }
+    if (effectiveImapFolder === trashFolder.id) {
+      addToast('Les messages sont déjà dans la Corbeille.');
+      return;
+    }
     setCheckedUids(new Set());
-    addToast(`${uidsToHide.length} conversation(s) supprimée(s).`, 'Annuler', () => {
-      setHiddenUids((prev) => {
-        const next = new Set(prev);
-        uidsToHide.forEach((u) => next.delete(u));
-        return next;
-      });
+    scheduleMove({
+      uids,
+      from: effectiveImapFolder,
+      to: trashFolder.id,
+      viewFolder: folderId,
+      pendingMessage: `${uids.length} conversation(s) seront déplacées vers la Corbeille dans 5 secondes…`,
+      successMessage: `${uids.length} conversation(s) placée(s) dans la Corbeille.`,
     });
-  }, [checkedUids, addToast]);
+  }, [checkedUids, trashFolder, effectiveImapFolder, folderId, scheduleMove, addToast]);
+
+  const handleBatchMove = useCallback(
+    (targetFolder: string) => {
+      const uids = Array.from(checkedUids);
+      if (uids.length === 0) return;
+      if (targetFolder === effectiveImapFolder) {
+        addToast('Les messages sont déjà dans ce dossier.');
+        return;
+      }
+      const targetLabel =
+        folders.find((folder) => folder.id === targetFolder)?.label ?? targetFolder;
+      setCheckedUids(new Set());
+      scheduleMove({
+        uids,
+        from: effectiveImapFolder,
+        to: targetFolder,
+        viewFolder: folderId,
+        pendingMessage: `${uids.length} conversation(s) seront déplacées vers ${targetLabel} dans 5 secondes…`,
+        successMessage: `${uids.length} conversation(s) déplacée(s) vers ${targetLabel}.`,
+      });
+    },
+    [checkedUids, effectiveImapFolder, folders, folderId, scheduleMove, addToast],
+  );
+
+  const handleBatchLabel = useCallback(
+    (keyword: string, label: string) => {
+      const uids = Array.from(checkedUids);
+      if (uids.length === 0) return;
+      setCheckedUids(new Set());
+      void setMessagesKeyword(uids, effectiveImapFolder, keyword, true)
+        .then((result) => {
+          addToast(
+            `Étiquette « ${label} » appliquée à ${result.count ?? uids.length} conversation(s).`,
+          );
+        })
+        .catch((error: unknown) => {
+          addToast(
+            error instanceof Error ? error.message : "Impossible d'appliquer l'étiquette.",
+          );
+        });
+    },
+    [checkedUids, effectiveImapFolder, addToast],
+  );
 
   const handleBatchMarkRead = useCallback(() => {
+    const uids = Array.from(checkedUids);
+    if (uids.length === 0) return;
     setReadOverrides((prev) => {
       const next = new Map(prev);
-      checkedUids.forEach((uid) => next.set(uid, true));
+      uids.forEach((uid) => next.set(uid, true));
       return next;
     });
     setCheckedUids(new Set());
-    addToast(`${checkedUids.size} conversation(s) marquée(s) comme lue(s).`);
-  }, [checkedUids, addToast]);
+    addToast(`${uids.length} conversation(s) marquée(s) comme lue(s).`);
+    void markMessagesRead(uids, effectiveImapFolder, true).catch((error: unknown) => {
+      setReadOverrides((prev) => {
+        const next = new Map(prev);
+        uids.forEach((uid) => next.delete(uid));
+        return next;
+      });
+      addToast(error instanceof Error ? error.message : 'Mise à jour impossible.');
+    });
+  }, [checkedUids, effectiveImapFolder, addToast]);
 
   const handleBatchMarkUnread = useCallback(() => {
+    const uids = Array.from(checkedUids);
+    if (uids.length === 0) return;
     setReadOverrides((prev) => {
       const next = new Map(prev);
-      checkedUids.forEach((uid) => next.set(uid, false));
+      uids.forEach((uid) => next.set(uid, false));
       return next;
     });
     setCheckedUids(new Set());
-    addToast(`${checkedUids.size} conversation(s) marquée(s) comme non lue(s).`);
-  }, [checkedUids, addToast]);
+    addToast(`${uids.length} conversation(s) marquée(s) comme non lue(s).`);
+    void markMessagesRead(uids, effectiveImapFolder, false).catch((error: unknown) => {
+      setReadOverrides((prev) => {
+        const next = new Map(prev);
+        uids.forEach((uid) => next.delete(uid));
+        return next;
+      });
+      addToast(error instanceof Error ? error.message : 'Mise à jour impossible.');
+    });
+  }, [checkedUids, effectiveImapFolder, addToast]);
 
   const handleBatchSnooze = useCallback(() => {
-    const uidsToHide = Array.from(checkedUids);
-    setHiddenUids((prev) => new Set([...prev, ...uidsToHide]));
+    const uids = Array.from(checkedUids);
+    if (uids.length === 0) return;
+    const until = nextTomorrowAt8().toISOString();
+    const label = formatSnoozeDate(until);
+    const viewFolder = folderId;
+
+    setHiddenUids((prev) => new Set([...prev, ...uids]));
     setCheckedUids(new Set());
-    addToast(`${uidsToHide.length} conversation(s) mise(s) en attente.`);
-  }, [checkedUids, addToast]);
+    setSelectedUid((current) => (current !== null && uids.includes(current) ? null : current));
+
+    const restore = () => {
+      if (folderIdRef.current !== viewFolder) return;
+      setHiddenUids((prev) => {
+        const next = new Set(prev);
+        uids.forEach((uid) => next.delete(uid));
+        return next;
+      });
+    };
+
+    void snoozeMessages(uids, effectiveImapFolder, until)
+      .then(() => {
+        addToast(`${uids.length} conversation(s) mise(s) en attente jusqu’au ${label}.`, 'Annuler', () => {
+          void Promise.allSettled(uids.map((uid) => unsnoozeMessage(uid))).then((results) => {
+            const failures = results.filter((result) => result.status === 'rejected').length;
+            if (failures === 0) restore();
+            reloadFolders();
+            reloadMessages();
+            addToast(
+              failures === 0
+                ? 'Mise en attente annulée.'
+                : `${failures} message(s) n'ont pas pu être replacés.`,
+            );
+          });
+        });
+        reloadFolders();
+        reloadMessages();
+      })
+      .catch((error: unknown) => {
+        restore();
+        addToast(
+          error instanceof Error ? error.message : 'Mise en attente impossible.',
+        );
+      });
+  }, [
+    checkedUids,
+    effectiveImapFolder,
+    folderId,
+    addToast,
+    reloadFolders,
+    reloadMessages,
+  ]);
 
   // Envoi d'email : SMTP direct prioritaire, n8n en repli
   const pendingSendsRef = useRef<Map<string, number>>(new Map());
@@ -738,6 +1027,10 @@ export default function App() {
     onBatchMarkRead: handleBatchMarkRead,
     onBatchMarkUnread: handleBatchMarkUnread,
     onBatchSnooze: handleBatchSnooze,
+    onBatchMove: handleBatchMove,
+    onBatchLabel: handleBatchLabel,
+    folders,
+    currentFolder: effectiveImapFolder,
     splitView,
     onChangeSplitView: setSplitView,
     onOpenShortcuts: () => setShortcutsOpen(true),

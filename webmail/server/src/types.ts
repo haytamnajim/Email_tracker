@@ -12,6 +12,8 @@ export interface Folder {
   name: string;
   /** Libellé français */
   label: string;
+  /** Drapeau SPECIAL-USE IMAP (\\Archive, \\Trash, \\Junk, etc.) */
+  specialUse?: string;
   /** Nombre de messages non lus */
   unread: number;
   /** Nombre total de messages */

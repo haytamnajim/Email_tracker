@@ -339,6 +339,58 @@ export function moveMessage(
   });
 }
 
+/** Déplace plusieurs messages vers un autre dossier (action utilisateur). */
+export function moveMessages(
+  uids: number[],
+  from: string,
+  to: string,
+): Promise<{ success: boolean; count: number; from: string; to: string }> {
+  return request<{ success: boolean; count: number; from: string; to: string }>(
+    `${BASE}/messages/batch/move`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: jsonBody({ uids, from, to }),
+    },
+  );
+}
+
+/** Met un message en attente dans un dossier dédié jusqu'à la date choisie. */
+export function snoozeMessage(
+  uid: number,
+  from: string,
+  until: string,
+): Promise<{ success: boolean; until: string }> {
+  return request<{ success: boolean; until: string }>(`${BASE}/messages/${uid}/snooze`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: jsonBody({ from, until }),
+  });
+}
+
+/** Met plusieurs messages en attente jusqu'à la même date. */
+export function snoozeMessages(
+  uids: number[],
+  from: string,
+  until: string,
+): Promise<{ success: boolean; count: number; until: string }> {
+  return request<{ success: boolean; count: number; until: string }>(
+    `${BASE}/messages/batch/snooze`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: jsonBody({ uids, from, until }),
+    },
+  );
+}
+
+/** Annule la mise en attente d'un message et le replace dans son dossier. */
+export function unsnoozeMessage(uid: number): Promise<{ success: boolean }> {
+  return request<{ success: boolean }>(`${BASE}/messages/${uid}/unsnooze`, {
+    method: 'POST',
+  });
+}
+
 /** Liste les étiquettes IMAP (keywords) appliquées à un message. */
 export function getMessageKeywords(
   uid: number,
@@ -364,6 +416,20 @@ export function setMessageKeyword(
       body: jsonBody({ keyword, value }),
     },
   );
+}
+
+/** Ajoute ou retire une étiquette IMAP sur plusieurs messages. */
+export function setMessagesKeyword(
+  uids: number[],
+  folder: string,
+  keyword: string,
+  value: boolean,
+): Promise<FlagResponse> {
+  return request<FlagResponse>(`${BASE}/flags/batch/keywords`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: jsonBody({ uids, folder, keyword, value }),
+  });
 }
 
 /** Marque un message comme lu/non lu. */

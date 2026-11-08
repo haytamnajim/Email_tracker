@@ -35,6 +35,78 @@ function parseKeyword(value: unknown): string {
   return value;
 }
 
+// ── Routes par lot ────────────────────────────────────────────────
+// Elles doivent être déclarées AVANT /:uid/... sinon Express interprète
+// « batch » comme un UID et renvoie systématiquement une erreur 400.
+
+/**
+ * PATCH /api/flags/batch/read
+ * Marque plusieurs messages comme lus/non lus.
+ * Body: { uids: number[], value: boolean, folder?: string }
+ */
+flagsRouter.patch(
+  '/batch/read',
+  asyncHandler(async (req: Request, res: Response) => {
+    const uids = parseUidList(req.body.uids);
+    const folder = parseFolderParam(req.body.folder);
+    const { value = true } = req.body as { value?: boolean };
+
+    if (uids.length === 0) {
+      throw new MailError('Aucun UID fourni.', 400);
+    }
+    await setFlagOnUids(uids, folder, '\\Seen', value);
+    res.json({ success: true, action: value ? 'read' : 'unread', count: uids.length });
+  }),
+);
+
+/**
+ * PATCH /api/flags/batch/flagged
+ * Marque/démarque plusieurs messages comme suivis.
+ * Body: { uids: number[], value: boolean, folder?: string }
+ */
+flagsRouter.patch(
+  '/batch/flagged',
+  asyncHandler(async (req: Request, res: Response) => {
+    const uids = parseUidList(req.body.uids);
+    const folder = parseFolderParam(req.body.folder);
+    const { value = true } = req.body as { value?: boolean };
+
+    if (uids.length === 0) {
+      throw new MailError('Aucun UID fourni.', 400);
+    }
+    await setFlagOnUids(uids, folder, '\\Flagged', value);
+    res.json({ success: true, action: value ? 'flagged' : 'unflagged', count: uids.length });
+  }),
+);
+
+/**
+ * PATCH /api/flags/batch/keywords
+ * Ajoute ou retire une étiquette IMAP sur plusieurs messages.
+ * Body: { uids: number[], keyword: string, value?: boolean, folder?: string }
+ */
+flagsRouter.patch(
+  '/batch/keywords',
+  asyncHandler(async (req: Request, res: Response) => {
+    const uids = parseUidList(req.body.uids);
+    const folder = parseFolderParam(req.body.folder);
+    const { keyword, value = true } = req.body as { keyword?: unknown; value?: boolean };
+
+    if (uids.length === 0) {
+      throw new MailError('Aucun UID fourni.', 400);
+    }
+    const parsed = parseKeyword(keyword);
+    const count = await service.setKeywords(uids, folder, parsed, Boolean(value));
+    res.json({
+      success: true,
+      keyword: parsed,
+      action: value ? 'added' : 'removed',
+      count,
+    });
+  }),
+);
+
+// ── Routes sur un message ─────────────────────────────────────────
+
 /**
  * GET /api/flags/:uid/keywords
  * Liste les drapeaux IMAP d'un message (dont les étiquettes personnalisées).
@@ -99,47 +171,5 @@ flagsRouter.patch(
 
     await setFlagged(uid, folder, value);
     res.json({ success: true, action: value ? 'flagged' : 'unflagged' });
-  }),
-);
-
-/**
- * PATCH /api/flags/batch/read
- * Marque plusieurs messages comme lus/non lus.
- * Body: { uids: number[], value: boolean, folder?: string }
- */
-flagsRouter.patch(
-  '/batch/read',
-  asyncHandler(async (req: Request, res: Response) => {
-    const uids = parseUidList(req.body.uids);
-    const folder = parseFolderParam(req.body.folder);
-    const { value = true } = req.body as { value?: boolean };
-
-    if (uids.length === 0) {
-      res.status(400).json({ success: false, error: 'Aucun UID fourni.' });
-      return;
-    }
-    await setFlagOnUids(uids, folder, '\\Seen', value);
-    res.json({ success: true, action: value ? 'read' : 'unread', count: uids.length });
-  }),
-);
-
-/**
- * PATCH /api/flags/batch/flagged
- * Marque/démarque plusieurs messages comme suivis.
- * Body: { uids: number[], value: boolean, folder?: string }
- */
-flagsRouter.patch(
-  '/batch/flagged',
-  asyncHandler(async (req: Request, res: Response) => {
-    const uids = parseUidList(req.body.uids);
-    const folder = parseFolderParam(req.body.folder);
-    const { value = true } = req.body as { value?: boolean };
-
-    if (uids.length === 0) {
-      res.status(400).json({ success: false, error: 'Aucun UID fourni.' });
-      return;
-    }
-    await setFlagOnUids(uids, folder, '\\Flagged', value);
-    res.json({ success: true, action: value ? 'flagged' : 'unflagged', count: uids.length });
   }),
 );

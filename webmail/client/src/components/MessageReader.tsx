@@ -48,20 +48,13 @@ import {
   setMessageKeyword,
 } from '../api';
 import { addTask } from '../utils/tasks';
+import { MESSAGE_LABELS } from '../utils/labels';
 import { containsRemoteImages, sanitizeEmailHtml } from '../utils/html';
 import { formatAddressList, formatBytes, formatFullDate } from '../utils/format';
 import { senderGradient, senderInitials } from '../utils/colors';
 import { ReaderSkeleton } from './Skeleton';
 import SendFlight, { SEND_DONE_MS, SEND_FLIGHT_MS, type SendPhase } from './SendFlight';
 import SendButton from './SendButton';
-
-/** Étiquettes proposées dans le menu, stockées comme keywords IMAP. */
-const MESSAGE_LABELS = [
-  { id: 'WebmailTravail', label: 'Travail' },
-  { id: 'WebmailPersonnel', label: 'Personnel' },
-  { id: 'WebmailUrgent', label: 'Urgent' },
-  { id: 'WebmailFacture', label: 'Facture' },
-] as const;
 
 interface MessageReaderProps {
   message: MessageDetail | null;

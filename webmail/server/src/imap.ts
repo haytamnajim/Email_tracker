@@ -243,6 +243,7 @@ export async function imapListFolders(): Promise<Folder[]> {
         id: entry.path,
         name: entry.name,
         label: folderLabel(entry.path, entry.specialUse),
+        specialUse: entry.specialUse ?? undefined,
         unread,
         total: entry.status?.messages ?? 0,
       });

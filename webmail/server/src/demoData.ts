@@ -42,7 +42,16 @@ interface Seed {
 
 const me: Address = { name: 'Vous', address: DEMO_ACCOUNT };
 
-const FOLDER_IDS = ['INBOX', 'Sent', 'Drafts', 'Junk', 'Trash'];
+const FOLDER_IDS = ['INBOX', 'Sent', 'Drafts', 'Archive', 'Junk', 'Trash'];
+
+const SPECIAL_USE: Record<string, string> = {
+  INBOX: '\\Inbox',
+  Sent: '\\Sent',
+  Drafts: '\\Drafts',
+  Archive: '\\Archive',
+  Junk: '\\Junk',
+  Trash: '\\Trash',
+};
 
 const SEEDS: Seed[] = [
   {
@@ -485,13 +494,42 @@ function toDetail(message: DemoMessage): MessageDetail {
   return detail;
 }
 
+const demoKeywords = new Map<number, Set<string>>();
+
+/** Déplace un ou plusieurs messages dans le jeu de données de démonstration. */
+export function demoMoveMessages(uids: number[], from: string, to: string): number {
+  if (uids.length === 0) return 0;
+  let moved = 0;
+  for (const message of messages) {
+    if (message.folder === from && uids.includes(message.uid)) {
+      message.folder = to;
+      moved += 1;
+    }
+  }
+  return moved;
+}
+
+/** Étiquettes IMAP simulées, conservées tant que le serveur tourne. */
+export function demoGetKeywords(uid: number): string[] {
+  return Array.from(demoKeywords.get(uid) ?? []);
+}
+
+export function demoSetKeyword(uid: number, keyword: string, value: boolean): void {
+  const current = demoKeywords.get(uid) ?? new Set<string>();
+  if (value) current.add(keyword);
+  else current.delete(keyword);
+  if (current.size === 0) demoKeywords.delete(uid);
+  else demoKeywords.set(uid, current);
+}
+
 export function demoListFolders(): Folder[] {
   const folders = FOLDER_IDS.map((id) => {
     const inFolder = messages.filter((m) => m.folder === id);
     return {
       id,
       name: id,
-      label: folderLabel(id),
+      label: folderLabel(id, SPECIAL_USE[id]),
+      specialUse: SPECIAL_USE[id],
       unread: inFolder.filter((m) => !m.isRead).length,
       total: inFolder.length,
     };

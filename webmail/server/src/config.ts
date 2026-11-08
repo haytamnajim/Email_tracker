@@ -13,6 +13,8 @@ export const config = {
   n8nWebhookUrl: process.env.N8N_WEBHOOK_URL ?? '',
   n8nSendWebhookUrl: process.env.N8N_SEND_WEBHOOK_URL ?? '',
   n8nDetectMeetingWebhookUrl: process.env.N8N_DETECT_MEETING_WEBHOOK_URL ?? '',
+  /** Dossier IMAP où sont rangés les messages en attente. */
+  snoozeFolder: process.env.SNOOZE_FOLDER?.trim() || 'En attente',
   imap: {
     host: process.env.IMAP_HOST ?? '',
     port: Number(process.env.IMAP_PORT ?? 993),
